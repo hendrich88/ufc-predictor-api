@@ -6,4 +6,4 @@ joblib
 requests
 shap
 matplotlib
-
+scikit-learn
