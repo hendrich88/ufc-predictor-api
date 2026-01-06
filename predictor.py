@@ -9,6 +9,7 @@ JSON_FILE_ID = "1iRyPqdNGYGSUR2hyL22qazNOENFBI7GM"
 MODEL_FILE_ID = "1e6WCzLU2rcQdstwHoREnwgzUa5XWN-kU"
 
 def download_file(file_id, filename):
+    """Stáhne soubor z Google Drive podle file_id, pokud neexistuje lokálně."""
     if not os.path.exists(filename):
         print(f"Stahuji {filename} z Google Drive...")
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
@@ -41,10 +42,10 @@ MIN_ELO = 0
 # LOAD DATA + MODEL (LOAD ONCE)
 # ======================
 
-df_stats = pd.read_json("df_prep_2025-12-17.json", lines=True)
+df_stats = pd.read_json(json_file, lines=True)
 df_stats = df_stats.sort_values(by="date")
 
-model = load("rf_model5.joblib")
+model = load(model_file)
 
 selected_features = [
     "diff_age",
@@ -210,6 +211,7 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
             "winner": fighter2,
             "probability": round(float(avg_prob_f2), 3)
         }
+
 
 
 
