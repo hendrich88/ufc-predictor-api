@@ -9,14 +9,17 @@ JSON_FILE_ID = "1iRyPqdNGYGSUR2hyL22qazNOENFBI7GM"
 MODEL_FILE_ID = "1e6WCzLU2rcQdstwHoREnwgzUa5XWN-kU"
 
 def download_file(file_id, filename):
-    """Stáhne soubor z Google Drive podle file_id, pokud neexistuje lokálně."""
     if not os.path.exists(filename):
         print(f"Stahuji {filename} z Google Drive...")
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        r = requests.get(url)
-        with open(filename, "wb") as f:
-            f.write(r.content)
-        print(f"{filename} stažen.")
+        r = requests.get(url, stream=True)
+        if r.status_code == 200:
+            with open(filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            print(f"{filename} stažen.")
+        else:
+            raise Exception(f"Chyba při stahování {filename}, status code: {r.status_code}")
 
 download_file(MODEL_FILE_ID, model_file)
 download_file(JSON_FILE_ID, json_file)
@@ -207,5 +210,6 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
             "winner": fighter2,
             "probability": round(float(avg_prob_f2), 3)
         }
+
 
 
