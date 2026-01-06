@@ -1,6 +1,9 @@
 fastapi
 uvicorn
 pandas
-scikit-learn
+numpy
 joblib
 requests
+shap
+matplotlib
+
