@@ -1,9 +1,7 @@
-fastapi
-uvicorn
+gradio
 pandas
 numpy
 joblib
 requests
-shap
-matplotlib
 scikit-learn
+
