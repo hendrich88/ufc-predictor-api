@@ -5,43 +5,38 @@ from datetime import date
 from joblib import load
 
 # ======================
-# KONFIG: Google Drive FILE_ID
+# KONFIG: GitHub Releases (v1.0)
 # ======================
 
-JSON_FILE_ID = "1iRyPqdNGYGSUR2hyL22qazNOENFBI7GM"   # tvůj df JSON
-MODEL_FILE_ID = "1e6WCzLU2rcQdstwHoREnwgzUa5XWN-kU"  # tvůj model joblib
+JSON_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/v1.0/df_prep_2025-12-17.json"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/v1.0/rf_model5.joblib"
 
 JSON_FILE = "df_prep_2025-12-17.json"
 MODEL_FILE = "rf_model5.joblib"
 
 # ======================
-# BEZPEČNÉ STAHOVÁNÍ SOUBORU Z DRIVE
+# STAHOVÁNÍ SOUBORŮ
 # ======================
 
-def download_file(file_id, filename):
-    """Stáhne soubor z Google Drive pokud ještě neexistuje."""
-    if not os.path.exists(filename):
-        print(f"Stahuji {filename} z Google Drive...")
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        r = requests.get(url, stream=True)
-        if r.status_code != 200:
-            raise Exception(f"Chyba při stahování {filename}, status code: {r.status_code}")
+def download_file(url, filename):
+    if os.path.exists(filename):
+        return
 
-        with open(filename, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
+    print(f"Stahuji {filename}...")
+    r = requests.get(url, stream=True, timeout=300)
+    r.raise_for_status()
+
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
                 f.write(chunk)
 
-        # Kontrola, že soubor není HTML stránka
-        with open(filename, "r", encoding="utf-8", errors="ignore") as f:
-            start = f.read(100)
-            if "<!DOCTYPE html>" in start or "<html" in start.lower():
-                raise Exception(f"{filename} obsahuje HTML místo JSON/modelu! Zkontroluj FILE_ID a přístup.")
+    print(f"{filename} stažen.")
 
-        print(f"{filename} stažen.")
+# stáhnout při startu
+download_file(JSON_URL, JSON_FILE)
+download_file(MODEL_URL, MODEL_FILE)
 
-# stáhnout soubory
-download_file(JSON_FILE_ID, JSON_FILE)
-download_file(MODEL_FILE_ID, MODEL_FILE)
 
 # ======================
 # KONSTANTY MODELU
@@ -190,3 +185,4 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
         return {"winner": fighter1, "probability": round(float(avg_prob_f1), 3)}
     else:
         return {"winner": fighter2, "probability": round(float(avg_prob_f2), 3)}
+
