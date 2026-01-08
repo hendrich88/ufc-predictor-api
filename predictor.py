@@ -194,16 +194,17 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     if avg_prob_f1 > avg_prob_f2:
         return {
             "winner": fighter1,
-            "win_prob": f"{round(float(avg_prob_f1) * 100, 1)}\n%",
+            "win_prob": f"{round(float(avg_prob_f1) * 100, 1)}%",
             "loser": fighter2,
-            "lose_prob": f"{round((1 - float(avg_prob_f1)) * 100, 1)}\n%"
+            "lose_prob": f"{round((1 - float(avg_prob_f1)) * 100, 1)}%"
         }
     else:
         return {
             "winner": fighter2,
-            "win_prob": f"{round(float(avg_prob_f2) * 100, 1)}\n%",
+            "win_prob": f"{round(float(avg_prob_f2) * 100, 1)}%",
             "loser": fighter1,
-            "lose_prob": f"{round((1 - float(avg_prob_f2)) * 100, 1)}\n%"
+            "lose_prob": f"{round((1 - float(avg_prob_f2)) * 100, 1)}%"
         }
+
 
 
