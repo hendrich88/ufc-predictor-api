@@ -31,14 +31,6 @@ def download_file(url, filename):
 download_file(MODEL_URL, MODEL_FILE)
 
 # ======================
-# KONSTANTY MODELU
-# ======================
-
-DECAY_THRESHOLD = 180       # dní bez penalizace
-DECAY_RATE = 0.05           # max ~10 % při dlouhé pauze
-MIN_VALUE = 0               # spodní hranice pro všechny statistiky
-
-# ======================
 # LOAD DATA + MODEL
 # ======================
 
@@ -50,6 +42,23 @@ df_stats["date"] = pd.to_datetime(df_stats["date"])
 df_stats = df_stats.sort_values(by="date")
 
 model = load(MODEL_FILE)
+
+# ======================
+# PARAMETRY DECAY
+# ======================
+
+DECAY_THRESHOLD = 180
+DECAY_RATE = 0.05
+MIN_VALUE = 0  # spodní hranice pro všechny statistiky
+
+def apply_decay(value, inactive_days):
+    """Kvadratický decay pro ELO a ostatní statistiky"""
+    if inactive_days <= DECAY_THRESHOLD:
+        return value
+    t = (inactive_days - DECAY_THRESHOLD) / 365
+    factor = 1 - DECAY_RATE * (t ** 2)
+    factor = max(0.7, factor)
+    return max(MIN_VALUE, value * factor)
 
 # ======================
 # FEATURES
@@ -100,49 +109,37 @@ selected_features = [
 
 stats = [f.replace("diff_", "", 1) for f in selected_features if f not in ["diff_age", "diff_elo_before"]]
 
+date_fight_pd = pd.to_datetime(date.today())
+
 # ======================
 # FUNKCE
 # ======================
 
-def quadratic_decay(value, inactive_days):
-    """
-    Kvadratický decay pro všechny statistiky kromě age.
-    """
-    t = max(0, inactive_days - DECAY_THRESHOLD) / 365
-    factor = 1 - DECAY_RATE * (t ** 2)
-    factor = max(0.7, factor)
-    return max(MIN_VALUE, value * factor)
-
 def get_stats_from_row(row, inactive_days):
-    """
-    Vrací všechny statistiky bojovníka s kvadratickým decay.
-    Age není kvadraticky penalizováno (lineární).
-    """
+    """Vrací statistiky bojovníka s kvadratickým decay, věk lineární"""
     data = {}
-    # Age lineární
+    # age lineární
     data['age'] = -(row['age'] + inactive_days / 365.25)
-    # ELO s kvadratickým decay
-    data['elo_before'] = quadratic_decay(row['elo_before1'], inactive_days)
-    # Ostatní statistiky s kvadratickým decay
+    # ostatní statistiky kvadratický decay
     for stat in stats:
         val = row.get(stat, 0)
-        data[stat] = quadratic_decay(val, inactive_days)
+        data[stat] = apply_decay(val, inactive_days)
+    # ELO kvadratický decay
+    data['elo_before'] = apply_decay(row['elo_before1'], inactive_days)
     return data
 
 def build_diff(row1, row2):
-    today = pd.to_datetime(date.today())
-    inactive1 = (today - pd.to_datetime(row1['date'])).days
-    inactive2 = (today - pd.to_datetime(row2['date'])).days
+    inactive1 = (date_fight_pd - pd.to_datetime(row1['date'])).days
+    inactive2 = (date_fight_pd - pd.to_datetime(row2['date'])).days
 
     s1 = get_stats_from_row(row1, inactive1)
     s2 = get_stats_from_row(row2, inactive2)
 
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
 
-    # Age diff lineární
+    # age lineární
     diffs['diff_age'] = s1['age'] - s2['age']
-
-    # ELO diff s kvadratickým decay
+    # ELO kvadratický
     diffs['diff_elo_before'] = s1['elo_before'] - s2['elo_before']
 
     return diffs
@@ -150,10 +147,8 @@ def build_diff(row1, row2):
 def build_input_df(fighter1, fighter2):
     row1 = df_stats.loc[df_stats['fighter1'] == fighter1].iloc[0]
     row2 = df_stats.loc[df_stats['fighter1'] == fighter2].iloc[0]
-
     diffs = build_diff(row1, row2)
-    input_df = pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
-    return input_df
+    return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
 # ======================
 # PUBLIC API
