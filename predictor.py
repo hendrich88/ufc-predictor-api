@@ -8,10 +8,7 @@ from joblib import load
 # KONFIG
 # ======================
 
-# 🔹 JSON je teď lokální
 JSON_FILE = "df_prep_clean_2026-01-08.json"
-
-# 🔹 Model zůstává z GitHub Releases
 MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/v1.0/rf_model5.joblib"
 MODEL_FILE = "rf_model5.joblib"
 
@@ -31,7 +28,6 @@ def download_file(url, filename):
                 f.write(chunk)
     print(f"{filename} stažen.")
 
-# stáhnout model při startu
 download_file(MODEL_URL, MODEL_FILE)
 
 # ======================
@@ -40,7 +36,7 @@ download_file(MODEL_URL, MODEL_FILE)
 
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
-MIN_ELO = 0
+MIN_VALUE = 0  # spodní hranice pro všechny statistiky
 
 # ======================
 # LOAD DATA + MODEL
@@ -102,27 +98,34 @@ selected_features = [
     "diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"
 ]
 
-stats = [f.replace("diff_", "", 1) for f in selected_features if f != "diff_elo_before"]
+stats = [f.replace("diff_", "", 1) for f in selected_features]
 
 # ======================
 # FUNKCE
 # ======================
 
-def apply_decay(elo, inactive_days):
-    if inactive_days <= DECAY_THRESHOLD:
-        return elo
-    t = (inactive_days - DECAY_THRESHOLD) / 365
+def quadratic_decay(value, inactive_days):
+    """
+    Kvadratický decay pro všechny statistiky.
+    """
+    t = max(0, inactive_days - DECAY_THRESHOLD) / 365
     factor = 1 - DECAY_RATE * (t ** 2)
     factor = max(0.7, factor)
-    return max(MIN_ELO, elo)
+    return max(MIN_VALUE, value * factor)
 
 def get_stats_from_row(row, inactive_days):
-    decay_factor = 1 - DECAY_RATE * max(0, inactive_days - DECAY_THRESHOLD) / 365
-    decay_factor = max(0.7, decay_factor)
+    """
+    Vrací všechny statistiky bojovníka s kvadratickým decay
+    """
     data = {}
     for stat in stats:
-        val = row.get(stat, 0)
-        data[stat] = val if stat == "ratio_reach" else val * decay_factor
+        if stat == "age":
+            val = -(row[stat] + inactive_days / 365.25)
+        elif stat == "elo_before":
+            val = row[stat]
+        else:
+            val = row.get(stat, 0)
+        data[stat] = quadratic_decay(val, inactive_days)
     return data
 
 def build_diff(row1, row2):
@@ -134,24 +137,14 @@ def build_diff(row1, row2):
     s2 = get_stats_from_row(row2, inactive2)
 
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
-
-    age1 = -(row1['age'] + inactive1 / 365.25)
-    age2 = -(row2['age'] + inactive2 / 365.25)
-    diffs['diff_age'] = age1 - age2
-
-    elo1 = apply_decay(row1['elo_before1'], inactive1)
-    elo2 = apply_decay(row2['elo_before1'], inactive2)
-    diffs['diff_elo_before'] = elo1 - elo2
-
     return diffs
 
 def build_input_df(fighter1, fighter2):
     row1 = df_stats.loc[df_stats['fighter1'] == fighter1].iloc[0]
     row2 = df_stats.loc[df_stats['fighter1'] == fighter2].iloc[0]
 
-    diffs_f1_vs_f2 = build_diff(row1, row2)
-
-    input_df = pd.DataFrame([{c: diffs_f1_vs_f2.get(c, 0) for c in selected_features}])
+    diffs = build_diff(row1, row2)
+    input_df = pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
     return input_df
 
 # ======================
