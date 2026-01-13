@@ -8,7 +8,7 @@ from joblib import load
 # KONFIG
 # ======================
 
-# 🔹 JSON je teď LOKÁLNÍ v repozitáři
+# 🔹 JSON je teď lokální
 JSON_FILE = "df_prep_clean_2026-01-08.json"
 
 # 🔹 Model zůstává z GitHub Releases
@@ -22,16 +22,13 @@ MODEL_FILE = "rf_model5.joblib"
 def download_file(url, filename):
     if os.path.exists(filename):
         return
-
     print(f"Stahuji {filename}...")
     r = requests.get(url, stream=True, timeout=300)
     r.raise_for_status()
-
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
-
     print(f"{filename} stažen.")
 
 # stáhnout model při startu
@@ -117,68 +114,48 @@ def apply_decay(elo, inactive_days):
     t = (inactive_days - DECAY_THRESHOLD) / 365
     factor = 1 - DECAY_RATE * (t ** 2)
     factor = max(0.7, factor)
-    return max(MIN_ELO, elo * factor)
+    return max(MIN_ELO, elo)
 
-
-def get_stats_for_fighter(df, fighter, inactive_days):
-    data = {}
-    decay_factor = 1 - DECAY_RATE * max(0, (inactive_days - DECAY_THRESHOLD) / 365) ** 2
+def get_stats_from_row(row, inactive_days):
+    decay_factor = 1 - DECAY_RATE * max(0, inactive_days - DECAY_THRESHOLD) / 365
     decay_factor = max(0.7, decay_factor)
-
-    fighter_df = df[df["fighter1"] == fighter]
-
-    if fighter_df.empty:
-        return {stat: 0 for stat in stats}
-
-    last_row = fighter_df.iloc[-1]
-
+    data = {}
     for stat in stats:
-        value = last_row.get(stat, 0)
-        data[stat] = value if stat == "ratio_reach" else value * decay_factor
-
+        val = row.get(stat, 0)
+        data[stat] = val if stat == "ratio_reach" else val * decay_factor
     return data
 
+def build_diff(row1, row2):
+    today = pd.to_datetime(date.today())
+    inactive1 = (today - pd.to_datetime(row1['date'])).days
+    inactive2 = (today - pd.to_datetime(row2['date'])).days
+
+    s1 = get_stats_from_row(row1, inactive1)
+    s2 = get_stats_from_row(row2, inactive2)
+
+    diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
+
+    age1 = -(row1['age'] + inactive1 / 365.25)
+    age2 = -(row2['age'] + inactive2 / 365.25)
+    diffs['diff_age'] = age1 - age2
+
+    elo1 = apply_decay(row1['elo_before1'], inactive1)
+    elo2 = apply_decay(row2['elo_before1'], inactive2)
+    diffs['diff_elo_before'] = elo1 - elo2
+
+    return diffs
 
 def build_input_df(fighter1, fighter2):
-    today = pd.to_datetime(date.today())
+    row1 = df_stats.loc[df_stats['fighter1'] == fighter1].iloc[0]
+    row2 = df_stats.loc[df_stats['fighter1'] == fighter2].iloc[0]
 
-    f1_df = df_stats[df_stats["fighter1"] == fighter1]
-    f2_df = df_stats[df_stats["fighter1"] == fighter2]
+    diffs_f1_vs_f2 = build_diff(row1, row2)
 
-    if f1_df.empty or f2_df.empty:
-        raise ValueError("One or both fighters not found in dataset")
-
-    last_f1 = f1_df.iloc[-1]
-    last_f2 = f2_df.iloc[-1]
-
-    inactive_f1 = (today - last_f1["date"]).days
-    inactive_f2 = (today - last_f2["date"]).days
-
-    stats_f1 = get_stats_for_fighter(df_stats, fighter1, inactive_f1)
-    stats_f2 = get_stats_for_fighter(df_stats, fighter2, inactive_f2)
-
-    age_f1 = -(last_f1["age"] + inactive_f1 / 365.25)
-    age_f2 = -(last_f2["age"] + inactive_f2 / 365.25)
-
-    elo_f1 = apply_decay(last_f1["elo_before1"], inactive_f1)
-    elo_f2 = apply_decay(last_f2["elo_before1"], inactive_f2)
-
-    diffs = {f"diff_{stat}": stats_f1[stat] - stats_f2[stat] for stat in stats}
-    diffs.update({
-        "diff_age": age_f1 - age_f2,
-        "diff_elo_before": elo_f1 - elo_f2
-    })
-
-    input_df = pd.DataFrame(0.0, index=[0], columns=selected_features)
-
-    for col, val in diffs.items():
-        if col in input_df.columns:
-            input_df.at[0, col] = val
-
+    input_df = pd.DataFrame([{c: diffs_f1_vs_f2.get(c, 0) for c in selected_features}])
     return input_df
 
 # ======================
-# PUBLIC API FUNKCE
+# PUBLIC API
 # ======================
 
 def predict_fight(fighter1: str, fighter2: str) -> dict:
@@ -192,19 +169,17 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
 
     if avg_prob_f1 > avg_prob_f2:
-        return {
-            "winner": fighter1,
-            "win_prob": f"{round(float(avg_prob_f1) * 100, 1)}%",
-            "loser": fighter2,
-            "lose_prob": f"{round((1 - float(avg_prob_f1)) * 100, 1)}%"
-        }
+        winner = fighter1
+        loser = fighter2
+        win_prob = avg_prob_f1
     else:
-        return {
-            "winner": fighter2,
-            "win_prob": f"{round(float(avg_prob_f2) * 100, 1)}%",
-            "loser": fighter1,
-            "lose_prob": f"{round((1 - float(avg_prob_f2)) * 100, 1)}%"
-        }
+        winner = fighter2
+        loser = fighter1
+        win_prob = avg_prob_f2
 
-
-
+    return {
+        "winner": winner,
+        "win_prob": f"{round(float(win_prob) * 100, 1)}%",
+        "loser": loser,
+        "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%"
+    }
