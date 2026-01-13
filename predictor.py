@@ -116,14 +116,17 @@ date_fight_pd = pd.to_datetime(date.today())
 # ======================
 
 def get_stats_from_row(row, inactive_days):
-    """Vrací statistiky bojovníka s kvadratickým decay, věk lineární"""
+    """Vrací statistiky bojovníka s kvadratickým decay, věk lineární, reach bez decay"""
     data = {}
     # age lineární
     data['age'] = -(row['age'] + inactive_days / 365.25)
-    # ostatní statistiky kvadratický decay
+    # ostatní statistiky kvadratický decay, kromě reach
     for stat in stats:
-        val = row.get(stat, 0)
-        data[stat] = apply_decay(val, inactive_days)
+        if stat == "ratio_reach":  # reach se nemění
+            data[stat] = row.get(stat, 0)
+        else:
+            val = row.get(stat, 0)
+            data[stat] = apply_decay(val, inactive_days)
     # ELO kvadratický decay
     data['elo_before'] = apply_decay(row['elo_before1'], inactive_days)
     return data
@@ -179,3 +182,4 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
         "loser": loser,
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%"
     }
+
