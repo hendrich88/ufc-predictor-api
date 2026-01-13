@@ -34,9 +34,9 @@ download_file(MODEL_URL, MODEL_FILE)
 # KONSTANTY MODELU
 # ======================
 
-DECAY_THRESHOLD = 180
-DECAY_RATE = 0.05
-MIN_VALUE = 0  # spodní hranice pro všechny statistiky
+DECAY_THRESHOLD = 180       # dní bez penalizace
+DECAY_RATE = 0.05           # max ~10 % při dlouhé pauze
+MIN_VALUE = 0               # spodní hranice pro všechny statistiky
 
 # ======================
 # LOAD DATA + MODEL
@@ -98,7 +98,7 @@ selected_features = [
     "diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"
 ]
 
-stats = [f.replace("diff_", "", 1) for f in selected_features]
+stats = [f.replace("diff_", "", 1) for f in selected_features if f not in ["diff_age", "diff_elo_before"]]
 
 # ======================
 # FUNKCE
@@ -106,7 +106,7 @@ stats = [f.replace("diff_", "", 1) for f in selected_features]
 
 def quadratic_decay(value, inactive_days):
     """
-    Kvadratický decay pro všechny statistiky.
+    Kvadratický decay pro všechny statistiky kromě age.
     """
     t = max(0, inactive_days - DECAY_THRESHOLD) / 365
     factor = 1 - DECAY_RATE * (t ** 2)
@@ -115,16 +115,17 @@ def quadratic_decay(value, inactive_days):
 
 def get_stats_from_row(row, inactive_days):
     """
-    Vrací všechny statistiky bojovníka s kvadratickým decay
+    Vrací všechny statistiky bojovníka s kvadratickým decay.
+    Age není kvadraticky penalizováno.
     """
     data = {}
+    # Age
+    data['age'] = -(row['age'] + inactive_days / 365.25)
+    # ELO
+    data['elo_before'] = quadratic_decay(row['elo_before1'], inactive_days)
+    # Ostatní statistiky
     for stat in stats:
-        if stat == "age":
-            val = -(row[stat] + inactive_days / 365.25)
-        elif stat == "elo_before":
-            val = row[stat]
-        else:
-            val = row.get(stat, 0)
+        val = row.get(stat, 0)
         data[stat] = quadratic_decay(val, inactive_days)
     return data
 
@@ -137,6 +138,17 @@ def build_diff(row1, row2):
     s2 = get_stats_from_row(row2, inactive2)
 
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
+
+    # Age diff bez kvadratického decay
+    age1 = -(row1['age'] + inactive1 / 365.25)
+    age2 = -(row2['age'] + inactive2 / 365.25)
+    diffs['diff_age'] = age1 - age2
+
+    # ELO diff s kvadratickým decay
+    elo1 = quadratic_decay(row1['elo_before1'], inactive1)
+    elo2 = quadratic_decay(row2['elo_before1'], inactive2)
+    diffs['diff_elo_before'] = elo1 - elo2
+
     return diffs
 
 def build_input_df(fighter1, fighter2):
@@ -176,3 +188,5 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
         "loser": loser,
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%"
     }
+
+
