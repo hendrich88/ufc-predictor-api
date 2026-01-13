@@ -116,14 +116,14 @@ def quadratic_decay(value, inactive_days):
 def get_stats_from_row(row, inactive_days):
     """
     Vrací všechny statistiky bojovníka s kvadratickým decay.
-    Age není kvadraticky penalizováno.
+    Age není kvadraticky penalizováno (lineární).
     """
     data = {}
-    # Age
+    # Age lineární
     data['age'] = -(row['age'] + inactive_days / 365.25)
-    # ELO
+    # ELO s kvadratickým decay
     data['elo_before'] = quadratic_decay(row['elo_before1'], inactive_days)
-    # Ostatní statistiky
+    # Ostatní statistiky s kvadratickým decay
     for stat in stats:
         val = row.get(stat, 0)
         data[stat] = quadratic_decay(val, inactive_days)
@@ -139,15 +139,11 @@ def build_diff(row1, row2):
 
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
 
-    # Age diff bez kvadratického decay
-    age1 = -(row1['age'] + inactive1 / 365.25)
-    age2 = -(row2['age'] + inactive2 / 365.25)
-    diffs['diff_age'] = age1 - age2
+    # Age diff lineární
+    diffs['diff_age'] = s1['age'] - s2['age']
 
     # ELO diff s kvadratickým decay
-    elo1 = quadratic_decay(row1['elo_before1'], inactive1)
-    elo2 = quadratic_decay(row2['elo_before1'], inactive2)
-    diffs['diff_elo_before'] = elo1 - elo2
+    diffs['diff_elo_before'] = s1['elo_before'] - s2['elo_before']
 
     return diffs
 
@@ -188,5 +184,3 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
         "loser": loser,
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%"
     }
-
-
