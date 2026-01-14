@@ -204,28 +204,30 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     shap_values_all_1 = explainer.shap_values(input_1)
     shap_values_all_2 = explainer.shap_values(input_2)
 
-    # Vybrat třídu 1 (pro binární klasifikaci)
+    # pro binární klasifikaci shap_values_all má shape [2, n_samples, n_features]
     shap_values_1 = shap_values_all_1[1] if isinstance(shap_values_all_1, list) else shap_values_all_1
     shap_values_2 = shap_values_all_2[1] if isinstance(shap_values_all_2, list) else shap_values_all_2
 
-    # Ujistíme se, že shap_values jsou 2D
-    if len(shap_values_1.shape) == 3:
-        shap_values_1 = shap_values_1[0]
-    if len(shap_values_2.shape) == 3:
-        shap_values_2 = shap_values_2[0]
+    # Ujistíme se, že shap_values jsou 2D: (n_samples, n_features)
+    shap_values_1 = shap_values_1.squeeze() if shap_values_1.ndim == 3 else shap_values_1
+    shap_values_2 = shap_values_2.squeeze() if shap_values_2.ndim == 3 else shap_values_2
+    if shap_values_1.ndim == 1:
+        shap_values_1 = shap_values_1.reshape(1, -1)
+    if shap_values_2.ndim == 1:
+        shap_values_2 = shap_values_2.reshape(1, -1)
 
-    shap_df_1 = pd.DataFrame([shap_values_1], columns=selected_features)
-    shap_df_2 = pd.DataFrame([shap_values_2], columns=selected_features)
+    shap_df_1 = pd.DataFrame(shap_values_1, columns=selected_features)
+    shap_df_2 = pd.DataFrame(shap_values_2, columns=selected_features)
 
     # ======================
     # 4) Spočítáme SHAP skupiny a symetrizujeme
     # ======================
     shap_groups = {}
     for group_name, features in groups.items():
-        # shap_values pro druhý zápas invertujeme
+        # invertujeme druhý zápas
         group_val_1 = float(shap_df_1[features].sum(axis=1))
         group_val_2 = float(shap_df_2[features].sum(axis=1))
-        # symetrický průměr
+        # symetrický průměr: (f1 - f2) / 2
         shap_groups[group_name] = (group_val_1 - group_val_2) / 2
 
     return {
@@ -235,5 +237,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
+
 
 
