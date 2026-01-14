@@ -147,6 +147,7 @@ def build_input_df(fighter1, fighter2):
     if row2_df.empty:
         raise ValueError(f"Fighter not found: {fighter2}")
     row2 = row2_df.iloc[0]
+
     diffs = build_diff(row1, row2)
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
@@ -157,14 +158,18 @@ def build_input_df(fighter1, fighter2):
 def predict_fight(fighter1: str, fighter2: str) -> dict:
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
+
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
+
     avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
+
     if avg_prob_f1 > avg_prob_f2:
         winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
+
     return {
         "winner": winner,
         "win_prob": f"{round(float(win_prob) * 100, 1)}%",
@@ -187,23 +192,21 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
+    # ======== SHAP ========
     shap_values_all = explainer.shap_values(input_1)
 
-    # Vybrat pouze hodnoty pro třídu 1
     if isinstance(shap_values_all, list) and len(shap_values_all) == 2:
-        shap_values_f1 = shap_values_all[1]  # třída 1, shape (1, n_features)
+        shap_values_f1 = shap_values_all[1]  # třída 1
     else:
         shap_values_f1 = shap_values_all
 
-    # Ujistíme se, že shap_values_f1 je 2D
-    if len(shap_values_f1.shape) == 3:
-        shap_values_f1 = shap_values_f1[0]  # vezmi první vzorek → shape (n_features,)
+    # vždy 2D
+    if shap_values_f1.ndim == 1:
+        shap_values_f1 = shap_values_f1.reshape(1, -1)
 
-    shap_df = pd.DataFrame([shap_values_f1], columns=selected_features)
+    shap_df = pd.DataFrame(shap_values_f1, columns=selected_features)
 
-    shap_groups = {}
-    for group_name, features in groups.items():
-        shap_groups[group_name] = float(shap_df[features].sum(axis=1))
+    shap_groups = {group_name: float(shap_df[features].sum(axis=1)) for group_name, features in groups.items()}
 
     return {
         "winner": winner,
@@ -212,7 +215,3 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
-
-
-
-
