@@ -185,7 +185,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     input_2 = build_input_df(fighter2, fighter1)
 
     # ======================
-    # 2) PREDIKCE
+    # 2) PREDIKCE (symetrická)
     # ======================
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
@@ -197,68 +197,69 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         winner = fighter1
         loser = fighter2
         win_prob = avg_prob_f1
-        winner_input = input_1
-        loser_input = input_2
+        win_input = input_1
+        lose_input = input_2
     else:
         winner = fighter2
         loser = fighter1
         win_prob = avg_prob_f2
-        winner_input = input_2
-        loser_input = input_1
+        win_input = input_2
+        lose_input = input_1
 
     # ======================
-    # 3) SHAP – oba směry
+    # 3) SHAP – ROBUSTNÍ EXTRAKCE
     # ======================
-    shap_w_all = explainer.shap_values(winner_input)
-    shap_l_all = explainer.shap_values(loser_input)
+    def extract_class1_shap(x):
+        sv = explainer.shap_values(x)
 
-    # binární klasifikace → bereme třídu 1
-    shap_w = shap_w_all[1] if isinstance(shap_w_all, list) else shap_w_all
-    shap_l = shap_l_all[1] if isinstance(shap_l_all, list) else shap_l_all
+        # případ 1: list [class0, class1]
+        if isinstance(sv, list):
+            sv = sv[1]
 
-    # squeeze do (n_features,)
-    shap_w = np.squeeze(shap_w)
-    shap_l = np.squeeze(shap_l)
+        sv = np.asarray(sv)
 
-    if shap_w.ndim != 1 or shap_l.ndim != 1:
-        raise ValueError("SHAP values are not 1D after squeeze")
+        # případ 2: (1, n_features, 2) → vezmi class=1
+        if sv.ndim == 3:
+            sv = sv[:, :, 1]
 
-    shap_w_df = pd.DataFrame([shap_w], columns=selected_features)
-    shap_l_df = pd.DataFrame([shap_l], columns=selected_features)
+        # teď MUSÍ být (1, n_features)
+        if sv.ndim != 2:
+            raise ValueError(f"Unexpected SHAP shape: {sv.shape}")
+
+        return sv[0]  # → (n_features,)
+
+    shap_win = extract_class1_shap(win_input)
+    shap_lose = extract_class1_shap(lose_input)
+
+    shap_win_df = pd.DataFrame([shap_win], columns=selected_features)
+    shap_lose_df = pd.DataFrame([shap_lose], columns=selected_features)
 
     # ======================
-    # 4) SYMETRIZACE SHAP
-    # (winner - loser) / 2
+    # 4) SYMETRICKÉ SHAP SKUPINY
+    # (winner − loser) / 2
     # ======================
     shap_groups = {}
 
     for group_name, features in groups.items():
-        w_val = shap_w_df[features].sum(axis=1).iloc[0]
-        l_val = shap_l_df[features].sum(axis=1).iloc[0]
-
-        shap_groups[group_name] = (w_val - l_val) / 2
+        w = shap_win_df[features].sum(axis=1).iloc[0]
+        l = shap_lose_df[features].sum(axis=1).iloc[0]
+        shap_groups[group_name] = (w - l) / 2
 
     # ======================
-    # 5) SJEDNOCENÍ ZNAMÉNEK
-    # součet musí být kladný pro vítěze
+    # 5) ZNAMÉNKA → vítěz = +
     # ======================
-    total_contribution = sum(shap_groups.values())
-    if total_contribution < 0:
+    if sum(shap_groups.values()) < 0:
         shap_groups = {k: -v for k, v in shap_groups.items()}
 
     # ======================
-    # 6) ×100 + ŘAZENÍ
+    # 6) ×100 + ŘAZENÍ DLE VÝZNAMNOSTI
     # ======================
-    shap_groups_scaled = {
+    shap_groups = {
         k: round(v * 100, 2) for k, v in shap_groups.items()
     }
 
-    shap_groups_sorted = dict(
-        sorted(
-            shap_groups_scaled.items(),
-            key=lambda x: abs(x[1]),
-            reverse=True
-        )
+    shap_groups = dict(
+        sorted(shap_groups.items(), key=lambda x: abs(x[1]), reverse=True)
     )
 
     return {
@@ -266,8 +267,9 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "win_prob": f"{round(win_prob * 100, 1)}%",
         "loser": loser,
         "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
-        "shap_groups": shap_groups_sorted
+        "shap_groups": shap_groups
     }
+
 
 
 
