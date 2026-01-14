@@ -44,6 +44,7 @@ df_stats["date"] = pd.to_datetime(df_stats["date"])
 df_stats = df_stats.sort_values(by="date")
 
 model = load(MODEL_FILE)
+explainer = shap.TreeExplainer(model)
 
 # ======================
 # PARAMETRY DECAY
@@ -54,7 +55,6 @@ DECAY_RATE = 0.05
 MIN_VALUE = 0  # spodní hranice pro všechny statistiky
 
 def apply_decay(value, inactive_days):
-    """Kvadratický decay pro ELO a ostatní statistiky"""
     if inactive_days <= DECAY_THRESHOLD:
         return value
     t = (inactive_days - DECAY_THRESHOLD) / 365
@@ -67,50 +67,22 @@ def apply_decay(value, inactive_days):
 # ======================
 
 selected_features = [
-    "diff_age",
-    "diff_elo_before",
-    "diff_ratio_min_sig_strikes_head_lnd_diff",
-    "diff_win_rate",
-    "diff_smt_min_sub_att",
-    "diff_ratio_min_sig_strikes_lnd_diff",
-    "diff_smt_sig_strikes_lnd_diff",
-    "diff_lose_rate",
-    "diff_ratio_min_sub_att_get",
-    "diff_avg_cplx_kd",
-    "diff_avg_cplx_min_td_thr",
-    "diff_ratio_sub_att_diff",
-    "diff_avg_cplx_acc_def_sig_strikes_head_lnd_get",
-    "diff_avg_cplx_sub_att",
-    "diff_ratio_sig_strikes_head_lnd_diff",
-    "diff_avg_cplx_sig_strikes_grnd_lnd_get",
-    "diff_smt_acc_def_sig_strikes_head_lnd_get",
-    "diff_avg_cplx_kd_get",
-    "diff_ratio_min_kd_diff",
-    "diff_avg_cplx_min_sig_strikes_head_lnd_get",
-    "diff_avg_cplx_min_td_lnd",
-    "diff_avg_cplx_sig_strikes_head_lnd",
-    "diff_avg_cplx_min_sig_strikes_leg_lnd_get",
-    "diff_avg_cplx_td_thr",
-    "diff_smt_acc_att_strikes_lnd",
-    "diff_ratio_lose_ko",
-    "diff_avg_cplx_cntrl_get",
-    "diff_ratio_sig_strikes_grnd_thr_diff",
-    "diff_ratio_att_td_lnd",
-    "diff_avg_cplx_acc_def_strikes_lnd_get",
-    "diff_avg_cplx_min_sig_strikes_grnd_thr_get",
-    "diff_smt_min_sig_strikes_head_lnd_diff",
-    "diff_ratio_td_thr",
-    "diff_smt_acc_att_td_lnd",
-    "diff_avg_cplx_sig_strikes_grnd_thr",
-    "diff_smt_acc_att_sig_strikes_grnd_lnd",
-    "diff_smt_sub_att_diff",
-    "diff_smt_acc_def_sig_strikes_grnd_lnd_get",
-    "diff_ratio_reach",
-    "diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"
+    "diff_age", "diff_elo_before", "diff_ratio_min_sig_strikes_head_lnd_diff", "diff_win_rate",
+    "diff_smt_min_sub_att", "diff_ratio_min_sig_strikes_lnd_diff", "diff_smt_sig_strikes_lnd_diff",
+    "diff_lose_rate", "diff_ratio_min_sub_att_get", "diff_avg_cplx_kd", "diff_avg_cplx_min_td_thr",
+    "diff_ratio_sub_att_diff", "diff_avg_cplx_acc_def_sig_strikes_head_lnd_get", "diff_avg_cplx_sub_att",
+    "diff_ratio_sig_strikes_head_lnd_diff", "diff_avg_cplx_sig_strikes_grnd_lnd_get",
+    "diff_smt_acc_def_sig_strikes_head_lnd_get", "diff_avg_cplx_kd_get", "diff_ratio_min_kd_diff",
+    "diff_avg_cplx_min_sig_strikes_head_lnd_get", "diff_avg_cplx_min_td_lnd", "diff_avg_cplx_sig_strikes_head_lnd",
+    "diff_avg_cplx_min_sig_strikes_leg_lnd_get", "diff_avg_cplx_td_thr", "diff_smt_acc_att_strikes_lnd",
+    "diff_ratio_lose_ko", "diff_avg_cplx_cntrl_get", "diff_ratio_sig_strikes_grnd_thr_diff",
+    "diff_ratio_att_td_lnd", "diff_avg_cplx_acc_def_strikes_lnd_get", "diff_avg_cplx_min_sig_strikes_grnd_thr_get",
+    "diff_smt_min_sig_strikes_head_lnd_diff", "diff_ratio_td_thr", "diff_smt_acc_att_td_lnd",
+    "diff_avg_cplx_sig_strikes_grnd_thr", "diff_smt_acc_att_sig_strikes_grnd_lnd", "diff_smt_sub_att_diff",
+    "diff_smt_acc_def_sig_strikes_grnd_lnd_get", "diff_ratio_reach", "diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"
 ]
 
 stats = [f.replace("diff_", "", 1) for f in selected_features if f not in ["diff_age", "diff_elo_before"]]
-
 date_fight_pd = pd.to_datetime(date.today())
 
 # ======================
@@ -122,12 +94,19 @@ groups = {
     'Reach': ["diff_ratio_reach"],
     'Win/Lose Rates': ["diff_win_rate","diff_lose_rate"],
     'ELO': ["diff_elo_before"],
-    'Boxing Attack': ["diff_ratio_min_sig_strikes_head_lnd_diff","diff_ratio_sig_strikes_head_lnd_diff","diff_avg_cplx_sig_strikes_head_lnd","diff_smt_min_sig_strikes_head_lnd_diff"],
-    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_smt_acc_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get","diff_avg_cplx_min_sig_strikes_head_lnd_get"],
-    'Kickboxing Attack': ["diff_ratio_min_kd_diff","diff_avg_cplx_kd","diff_ratio_min_sig_strikes_lnd_diff","diff_smt_sig_strikes_lnd_diff","diff_smt_acc_att_strikes_lnd"],
-    'Kickboxing Defense': ["diff_avg_cplx_min_sig_strikes_leg_lnd_get","diff_ratio_lose_ko","diff_avg_cplx_acc_def_strikes_lnd_get","diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"],
-    'Wrestling Attack': ["diff_avg_cplx_min_td_thr","diff_avg_cplx_min_td_lnd","diff_avg_cplx_td_thr","diff_ratio_sig_strikes_grnd_thr_diff","diff_ratio_att_td_lnd","diff_ratio_td_thr","diff_smt_acc_att_td_lnd","diff_avg_cplx_sig_strikes_grnd_thr","diff_smt_acc_att_sig_strikes_grnd_lnd"],
-    'Wrestling Defense': ["diff_avg_cplx_sig_strikes_grnd_lnd_get","diff_avg_cplx_cntrl_get","diff_avg_cplx_min_sig_strikes_grnd_thr_get","diff_smt_acc_def_sig_strikes_grnd_lnd_get"],
+    'Boxing Attack': ["diff_ratio_min_sig_strikes_head_lnd_diff","diff_ratio_sig_strikes_head_lnd_diff",
+                      "diff_avg_cplx_sig_strikes_head_lnd","diff_smt_min_sig_strikes_head_lnd_diff"],
+    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_smt_acc_def_sig_strikes_head_lnd_get",
+                       "diff_avg_cplx_kd_get","diff_avg_cplx_min_sig_strikes_head_lnd_get"],
+    'Kickboxing Attack': ["diff_ratio_min_kd_diff","diff_avg_cplx_kd","diff_ratio_min_sig_strikes_lnd_diff",
+                          "diff_smt_sig_strikes_lnd_diff","diff_smt_acc_att_strikes_lnd"],
+    'Kickboxing Defense': ["diff_avg_cplx_min_sig_strikes_leg_lnd_get","diff_ratio_lose_ko",
+                           "diff_avg_cplx_acc_def_strikes_lnd_get","diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"],
+    'Wrestling Attack': ["diff_avg_cplx_min_td_thr","diff_avg_cplx_min_td_lnd","diff_avg_cplx_td_thr",
+                         "diff_ratio_sig_strikes_grnd_thr_diff","diff_ratio_att_td_lnd","diff_ratio_td_thr",
+                         "diff_smt_acc_att_td_lnd","diff_avg_cplx_sig_strikes_grnd_thr","diff_smt_acc_att_sig_strikes_grnd_lnd"],
+    'Wrestling Defense': ["diff_avg_cplx_sig_strikes_grnd_lnd_get","diff_avg_cplx_cntrl_get",
+                          "diff_avg_cplx_min_sig_strikes_grnd_thr_get","diff_smt_acc_def_sig_strikes_grnd_lnd_get"],
     'Grappling Attack': ["diff_smt_min_sub_att","diff_ratio_sub_att_diff","diff_avg_cplx_sub_att","diff_smt_sub_att_diff"],
     'Grappling Defense': ["diff_ratio_min_sub_att_get"]
 }
@@ -137,11 +116,10 @@ groups = {
 # ======================
 
 def get_stats_from_row(row, inactive_days):
-    """Vrací statistiky bojovníka s kvadratickým decay, věk lineární, reach bez decay"""
     data = {}
     data['age'] = -(row['age'] + inactive_days / 365.25)
     for stat in stats:
-        if stat == "ratio_reach":  
+        if stat == "ratio_reach":
             data[stat] = row.get(stat, 0)
         else:
             val = row.get(stat, 0)
@@ -169,8 +147,6 @@ def build_input_df(fighter1, fighter2):
 # PUBLIC API
 # ======================
 
-explainer = shap.TreeExplainer(model)
-
 def predict_fight(fighter1: str, fighter2: str) -> dict:
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
@@ -190,7 +166,7 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     }
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    """Vrací prediction + SHAP hodnoty seskupené podle kategorií"""
+    """Prediction + SHAP grouped"""
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
     prob1 = model.predict_proba(input_1)[0]
@@ -205,9 +181,8 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     shap_values_f1 = explainer.shap_values(input_1)[1]  
     shap_df = pd.DataFrame(shap_values_f1, columns=selected_features)
 
-    shap_groups = {}
-    for group_name, features in groups.items():
-        shap_groups[group_name] = float(shap_df[features].sum(axis=1))
+    shap_groups = {group_name: float(shap_df[features].sum(axis=1))
+                   for group_name, features in groups.items()}
 
     return {
         "winner": winner,
