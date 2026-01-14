@@ -178,11 +178,15 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     }
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    # 1) Vytvoříme inputy
+    # ======================
+    # 1) Vytvoříme inputy pro oba směry
+    # ======================
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
 
+    # ======================
     # 2) Predikce pravděpodobností
+    # ======================
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
 
@@ -194,27 +198,32 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
+    # ======================
     # 3) SHAP hodnoty pro oba směry
+    # ======================
     shap_values_all_1 = explainer.shap_values(input_1)
     shap_values_all_2 = explainer.shap_values(input_2)
 
-    # pro binární klasifikaci shap_values_all má shape [2, n_samples, n_features]
+    # Vybrat třídu 1 (pro binární klasifikaci)
     shap_values_1 = shap_values_all_1[1] if isinstance(shap_values_all_1, list) else shap_values_all_1
     shap_values_2 = shap_values_all_2[1] if isinstance(shap_values_all_2, list) else shap_values_all_2
 
-    # Zajistíme tvar (1, n_features)
-    shap_values_1 = np.atleast_2d(shap_values_1.squeeze())
-    shap_values_2 = np.atleast_2d(shap_values_2.squeeze())
+    # Přetvoříme vždy na (1, n_features)
+    shap_values_1 = shap_values_1.reshape(1, -1)
+    shap_values_2 = shap_values_2.reshape(1, -1)
 
     shap_df_1 = pd.DataFrame(shap_values_1, columns=selected_features)
     shap_df_2 = pd.DataFrame(shap_values_2, columns=selected_features)
 
+    # ======================
     # 4) Spočítáme SHAP skupiny a symetrizujeme
+    # ======================
     shap_groups = {}
     for group_name, features in groups.items():
         group_val_1 = float(shap_df_1[features].sum(axis=1))
         group_val_2 = float(shap_df_2[features].sum(axis=1))
-        shap_groups[group_name] = (group_val_1 - group_val_2) / 2  # invert druhý zápas
+        # symetrické průměrování: druhý směr invertujeme
+        shap_groups[group_name] = (group_val_1 - group_val_2) / 2
 
     return {
         "winner": winner,
@@ -223,6 +232,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
 
 
