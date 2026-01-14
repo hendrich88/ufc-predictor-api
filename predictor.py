@@ -138,8 +138,15 @@ def build_diff(row1, row2):
     return diffs
 
 def build_input_df(fighter1, fighter2):
-    row1 = df_stats.loc[df_stats['fighter1'] == fighter1].iloc[0]
-    row2 = df_stats.loc[df_stats['fighter1'] == fighter2].iloc[0]
+    row1_df = df_stats.loc[df_stats['fighter1'] == fighter1]
+    if row1_df.empty:
+        raise ValueError(f"Fighter not found: {fighter1}")
+    row1 = row1_df.iloc[0]
+
+    row2_df = df_stats.loc[df_stats['fighter1'] == fighter2]
+    if row2_df.empty:
+        raise ValueError(f"Fighter not found: {fighter2}")
+    row2 = row2_df.iloc[0]
     diffs = build_diff(row1, row2)
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
@@ -201,4 +208,5 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
