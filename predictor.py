@@ -178,15 +178,11 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     }
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    # ======================
-    # 1) Vytvoříme inputy pro oba směry
-    # ======================
+    # 1) Build inputs
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
 
-    # ======================
-    # 2) Predikce pravděpodobností
-    # ======================
+    # 2) Predict probabilities
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
 
@@ -198,32 +194,33 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
-    # ======================
-    # 3) SHAP hodnoty pro oba směry
-    # ======================
-    shap_values_all_1 = explainer.shap_values(input_1)
-    shap_values_all_2 = explainer.shap_values(input_2)
+    # 3) SHAP values
+    shap_vals_1 = explainer.shap_values(input_1)
+    shap_vals_2 = explainer.shap_values(input_2)
 
-    # Vybrat třídu 1 (pro binární klasifikaci)
-    shap_values_1 = shap_values_all_1[1] if isinstance(shap_values_all_1, list) else shap_values_all_1
-    shap_values_2 = shap_values_all_2[1] if isinstance(shap_values_all_2, list) else shap_values_all_2
+    # 3a) Select class 1 if it's a list
+    shap_1 = shap_vals_1[1] if isinstance(shap_vals_1, list) else shap_vals_1
+    shap_2 = shap_vals_2[1] if isinstance(shap_vals_2, list) else shap_vals_2
 
-    # Přetvoříme vždy na (1, n_features)
-    shap_values_1 = shap_values_1.reshape(1, -1)
-    shap_values_2 = shap_values_2.reshape(1, -1)
+    # 3b) Ensure 2D: take first sample and reshape if needed
+    if shap_1.ndim == 3:
+        shap_1 = shap_1[0, :, 0]
+    if shap_2.ndim == 3:
+        shap_2 = shap_2[0, :, 0]
 
-    shap_df_1 = pd.DataFrame(shap_values_1, columns=selected_features)
-    shap_df_2 = pd.DataFrame(shap_values_2, columns=selected_features)
+    shap_1 = shap_1.reshape(1, -1)
+    shap_2 = shap_2.reshape(1, -1)
 
-    # ======================
-    # 4) Spočítáme SHAP skupiny a symetrizujeme
-    # ======================
+    shap_df_1 = pd.DataFrame(shap_1, columns=selected_features)
+    shap_df_2 = pd.DataFrame(shap_2, columns=selected_features)
+
+    # 4) Symmetrize SHAP groups
     shap_groups = {}
     for group_name, features in groups.items():
-        group_val_1 = float(shap_df_1[features].sum(axis=1))
-        group_val_2 = float(shap_df_2[features].sum(axis=1))
-        # symetrické průměrování: druhý směr invertujeme
-        shap_groups[group_name] = (group_val_1 - group_val_2) / 2
+        val_1 = float(shap_df_1[features].sum(axis=1))
+        val_2 = float(shap_df_2[features].sum(axis=1))
+        # invert second direction
+        shap_groups[group_name] = (val_1 - val_2) / 2
 
     return {
         "winner": winner,
@@ -232,6 +229,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
 
 
