@@ -178,57 +178,65 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     }
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    # 1) Build inputs
+    # ======================
+    # 1) Inputy
+    # ======================
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
 
-    # 2) Predict probabilities
+    # ======================
+    # 2) Pravděpodobnosti (symetricky)
+    # ======================
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
 
     avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
 
-    if avg_prob_f1 > avg_prob_f2:
+    if avg_prob_f1 >= avg_prob_f2:
         winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
-    # 3) SHAP values
-    shap_vals_1 = explainer.shap_values(input_1)
-    shap_vals_2 = explainer.shap_values(input_2)
+    # ======================
+    # 3) SHAP – oba směry
+    # ======================
+    sv1 = explainer.shap_values(input_1)
+    sv2 = explainer.shap_values(input_2)
 
-    # 3a) Select class 1 if it's a list
-    shap_1 = shap_vals_1[1] if isinstance(shap_vals_1, list) else shap_vals_1
-    shap_2 = shap_vals_2[1] if isinstance(shap_vals_2, list) else shap_vals_2
+    sv1 = sv1[1] if isinstance(sv1, list) else sv1
+    sv2 = sv2[1] if isinstance(sv2, list) else sv2
 
-    # 3b) Ensure 2D: take first sample and reshape if needed
-    if shap_1.ndim == 3:
-        shap_1 = shap_1[0, :, 0]
-    if shap_2.ndim == 3:
-        shap_2 = shap_2[0, :, 0]
+    # vždy (1, n_features)
+    sv1 = sv1.reshape(1, -1)
+    sv2 = sv2.reshape(1, -1)
 
-    shap_1 = shap_1.reshape(1, -1)
-    shap_2 = shap_2.reshape(1, -1)
+    df1 = pd.DataFrame(sv1, columns=selected_features)
+    df2 = pd.DataFrame(sv2, columns=selected_features)
 
-    shap_df_1 = pd.DataFrame(shap_1, columns=selected_features)
-    shap_df_2 = pd.DataFrame(shap_2, columns=selected_features)
-
-    # 4) Symmetrize SHAP groups
+    # ======================
+    # 4) Symetrizace SHAP skupin
+    # ======================
     shap_groups = {}
-    for group_name, features in groups.items():
-        val_1 = float(shap_df_1[features].sum(axis=1))
-        val_2 = float(shap_df_2[features].sum(axis=1))
-        # invert second direction
-        shap_groups[group_name] = (val_1 - val_2) / 2
+    for group, feats in groups.items():
+        v1 = float(df1[feats].sum(axis=1))
+        v2 = float(df2[feats].sum(axis=1))
+        shap_groups[group] = (v1 - v2) / 2
+
+    # ======================
+    # 5) UKOTVENÍ KE VÍTĚZI
+    # ======================
+    if winner != fighter1:
+        shap_groups = {k: -v for k, v in shap_groups.items()}
 
     return {
         "winner": winner,
-        "win_prob": f"{round(float(win_prob) * 100, 1)}%",
+        "win_prob": f"{round(win_prob * 100, 1)}%",
         "loser": loser,
-        "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
+        "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
 
 
