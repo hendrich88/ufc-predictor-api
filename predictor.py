@@ -179,64 +179,96 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     # ======================
-    # 1) Inputy
+    # 1) INPUTY
     # ======================
-    X1 = build_input_df(fighter1, fighter2)
-    X2 = build_input_df(fighter2, fighter1)
+    input_1 = build_input_df(fighter1, fighter2)
+    input_2 = build_input_df(fighter2, fighter1)
 
     # ======================
-    # 2) Pravděpodobnosti
+    # 2) PREDIKCE
     # ======================
-    p1 = model.predict_proba(X1)[0]
-    p2 = model.predict_proba(X2)[0]
+    prob1 = model.predict_proba(input_1)[0]
+    prob2 = model.predict_proba(input_2)[0]
 
-    prob_f1 = (p1[1] + (1 - p2[1])) / 2
-    prob_f2 = (p1[0] + (1 - p2[0])) / 2
+    avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
+    avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
 
-    if prob_f1 >= prob_f2:
-        winner, loser, win_prob = fighter1, fighter2, prob_f1
-        winner_is_f1 = True
+    if avg_prob_f1 >= avg_prob_f2:
+        winner = fighter1
+        loser = fighter2
+        win_prob = avg_prob_f1
+        winner_input = input_1
+        loser_input = input_2
     else:
-        winner, loser, win_prob = fighter2, fighter1, prob_f2
-        winner_is_f1 = False
+        winner = fighter2
+        loser = fighter1
+        win_prob = avg_prob_f2
+        winner_input = input_2
+        loser_input = input_1
 
     # ======================
-    # 3) SHAP – SPRÁVNÁ EXTRAKCE
+    # 3) SHAP – oba směry
     # ======================
-    sv1 = explainer.shap_values(X1)
-    sv2 = explainer.shap_values(X2)
+    shap_w_all = explainer.shap_values(winner_input)
+    shap_l_all = explainer.shap_values(loser_input)
 
-    # RF → (1, 40, 2)
-    if sv1.ndim == 3:
-        sv1 = sv1[:, :, 1]
-    if sv2.ndim == 3:
-        sv2 = sv2[:, :, 1]
+    # binární klasifikace → bereme třídu 1
+    shap_w = shap_w_all[1] if isinstance(shap_w_all, list) else shap_w_all
+    shap_l = shap_l_all[1] if isinstance(shap_l_all, list) else shap_l_all
 
-    df1 = pd.DataFrame(sv1, columns=selected_features)
-    df2 = pd.DataFrame(sv2, columns=selected_features)
+    # squeeze do (n_features,)
+    shap_w = np.squeeze(shap_w)
+    shap_l = np.squeeze(shap_l)
+
+    if shap_w.ndim != 1 or shap_l.ndim != 1:
+        raise ValueError("SHAP values are not 1D after squeeze")
+
+    shap_w_df = pd.DataFrame([shap_w], columns=selected_features)
+    shap_l_df = pd.DataFrame([shap_l], columns=selected_features)
 
     # ======================
-    # 4) SYMETRIZACE
+    # 4) SYMETRIZACE SHAP
+    # (winner - loser) / 2
     # ======================
     shap_groups = {}
-    for group, feats in groups.items():
-        v1 = float(df1[feats].sum(axis=1))
-        v2 = float(df2[feats].sum(axis=1))
-        shap_groups[group] = (v1 - v2) / 2
+
+    for group_name, features in groups.items():
+        w_val = shap_w_df[features].sum(axis=1).iloc[0]
+        l_val = shap_l_df[features].sum(axis=1).iloc[0]
+
+        shap_groups[group_name] = (w_val - l_val) / 2
 
     # ======================
-    # 5) UKOTVENÍ KE VÍTĚZI
+    # 5) SJEDNOCENÍ ZNAMÉNEK
+    # součet musí být kladný pro vítěze
     # ======================
-    if not winner_is_f1:
+    total_contribution = sum(shap_groups.values())
+    if total_contribution < 0:
         shap_groups = {k: -v for k, v in shap_groups.items()}
+
+    # ======================
+    # 6) ×100 + ŘAZENÍ
+    # ======================
+    shap_groups_scaled = {
+        k: round(v * 100, 2) for k, v in shap_groups.items()
+    }
+
+    shap_groups_sorted = dict(
+        sorted(
+            shap_groups_scaled.items(),
+            key=lambda x: abs(x[1]),
+            reverse=True
+        )
+    )
 
     return {
         "winner": winner,
         "win_prob": f"{round(win_prob * 100, 1)}%",
         "loser": loser,
         "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
-        "shap_groups": shap_groups
+        "shap_groups": shap_groups_sorted
     }
+
 
 
 
