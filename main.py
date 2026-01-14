@@ -9,6 +9,7 @@ app = FastAPI(
 
 @app.get("/")
 def root():
+    """Základní endpoint pro kontrolu, zda API běží"""
     return {"message": "UFC Predictor API is running"}
 
 @app.get("/predict")
@@ -21,6 +22,8 @@ def predict(fighter1: str, fighter2: str):
 
     try:
         return predict_fight(fighter1, fighter2)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -34,5 +37,7 @@ def predict_shap(fighter1: str, fighter2: str):
 
     try:
         return predict_fight_with_shap(fighter1, fighter2)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
