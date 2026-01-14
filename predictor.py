@@ -93,7 +93,7 @@ groups = {
     'Age': ["diff_age"],
     'Reach': ["diff_ratio_reach"],
     'Win/Lose Rates': ["diff_win_rate","diff_lose_rate"],
-    'ELO': ["diff_elo_before"],
+    'MMAI Score': ["diff_elo_before"],
     'Boxing Attack': ["diff_ratio_min_sig_strikes_head_lnd_diff","diff_ratio_sig_strikes_head_lnd_diff",
                       "diff_avg_cplx_sig_strikes_head_lnd","diff_smt_min_sig_strikes_head_lnd_diff"],
     'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_smt_acc_def_sig_strikes_head_lnd_get",
@@ -269,6 +269,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
 
 
