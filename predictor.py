@@ -181,41 +181,42 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     # ======================
     # 1) Inputy
     # ======================
-    input_1 = build_input_df(fighter1, fighter2)
-    input_2 = build_input_df(fighter2, fighter1)
+    X1 = build_input_df(fighter1, fighter2)
+    X2 = build_input_df(fighter2, fighter1)
 
     # ======================
-    # 2) Pravděpodobnosti (symetricky)
+    # 2) Pravděpodobnosti
     # ======================
-    prob1 = model.predict_proba(input_1)[0]
-    prob2 = model.predict_proba(input_2)[0]
+    p1 = model.predict_proba(X1)[0]
+    p2 = model.predict_proba(X2)[0]
 
-    avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
-    avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
+    prob_f1 = (p1[1] + (1 - p2[1])) / 2
+    prob_f2 = (p1[0] + (1 - p2[0])) / 2
 
-    if avg_prob_f1 >= avg_prob_f2:
-        winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
+    if prob_f1 >= prob_f2:
+        winner, loser, win_prob = fighter1, fighter2, prob_f1
+        winner_is_f1 = True
     else:
-        winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
+        winner, loser, win_prob = fighter2, fighter1, prob_f2
+        winner_is_f1 = False
 
     # ======================
-    # 3) SHAP – oba směry
+    # 3) SHAP – SPRÁVNÁ EXTRAKCE
     # ======================
-    sv1 = explainer.shap_values(input_1)
-    sv2 = explainer.shap_values(input_2)
+    sv1 = explainer.shap_values(X1)
+    sv2 = explainer.shap_values(X2)
 
-    sv1 = sv1[1] if isinstance(sv1, list) else sv1
-    sv2 = sv2[1] if isinstance(sv2, list) else sv2
-
-    # vždy (1, n_features)
-    sv1 = sv1.reshape(1, -1)
-    sv2 = sv2.reshape(1, -1)
+    # RF → (1, 40, 2)
+    if sv1.ndim == 3:
+        sv1 = sv1[:, :, 1]
+    if sv2.ndim == 3:
+        sv2 = sv2[:, :, 1]
 
     df1 = pd.DataFrame(sv1, columns=selected_features)
     df2 = pd.DataFrame(sv2, columns=selected_features)
 
     # ======================
-    # 4) Symetrizace SHAP skupin
+    # 4) SYMETRIZACE
     # ======================
     shap_groups = {}
     for group, feats in groups.items():
@@ -226,7 +227,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     # ======================
     # 5) UKOTVENÍ KE VÍTĚZI
     # ======================
-    if winner != fighter1:
+    if not winner_is_f1:
         shap_groups = {k: -v for k, v in shap_groups.items()}
 
     return {
@@ -236,6 +237,7 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
 
 
 
