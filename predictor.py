@@ -192,21 +192,27 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     else:
         winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
-    # ======== SHAP ========
     shap_values_all = explainer.shap_values(input_1)
 
+    # PRO BINÁRNÍ KLASY: shap_values_all má shape [2, n_samples, n_features]
     if isinstance(shap_values_all, list) and len(shap_values_all) == 2:
-        shap_values_f1 = shap_values_all[1]  # třída 1
+        shap_values_f1 = shap_values_all[1]  # vezmi třídu "1"
     else:
         shap_values_f1 = shap_values_all
 
-    # vždy 2D
+    # pokud je shape (1, n_features) → 2D array, pokud shape (n_samples, n_features, 1) → squeeze
+    if len(shap_values_f1.shape) == 3:
+        shap_values_f1 = shap_values_f1[:, :, 0]
+
+    # nakonec musí být 2D: (n_samples, n_features)
     if shap_values_f1.ndim == 1:
         shap_values_f1 = shap_values_f1.reshape(1, -1)
 
     shap_df = pd.DataFrame(shap_values_f1, columns=selected_features)
 
-    shap_groups = {group_name: float(shap_df[features].sum(axis=1)) for group_name, features in groups.items()}
+    shap_groups = {}
+    for group_name, features in groups.items():
+        shap_groups[group_name] = float(shap_df[features].sum(axis=1))
 
     return {
         "winner": winner,
@@ -215,3 +221,4 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%",
         "shap_groups": shap_groups
     }
+
