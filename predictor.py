@@ -139,33 +139,24 @@ groups = {
 def get_stats_from_row(row, inactive_days):
     """Vrací statistiky bojovníka s kvadratickým decay, věk lineární, reach bez decay"""
     data = {}
-    # age lineární
     data['age'] = -(row['age'] + inactive_days / 365.25)
-    # ostatní statistiky kvadratický decay, kromě reach
     for stat in stats:
-        if stat == "ratio_reach":  # reach se nemění
+        if stat == "ratio_reach":  
             data[stat] = row.get(stat, 0)
         else:
             val = row.get(stat, 0)
             data[stat] = apply_decay(val, inactive_days)
-    # ELO kvadratický decay
     data['elo_before'] = apply_decay(row['elo_before1'], inactive_days)
     return data
 
 def build_diff(row1, row2):
     inactive1 = (date_fight_pd - pd.to_datetime(row1['date'])).days
     inactive2 = (date_fight_pd - pd.to_datetime(row2['date'])).days
-
     s1 = get_stats_from_row(row1, inactive1)
     s2 = get_stats_from_row(row2, inactive2)
-
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
-
-    # age lineární
     diffs['diff_age'] = s1['age'] - s2['age']
-    # ELO kvadratický
     diffs['diff_elo_before'] = s1['elo_before'] - s2['elo_before']
-
     return diffs
 
 def build_input_df(fighter1, fighter2):
@@ -183,22 +174,14 @@ explainer = shap.TreeExplainer(model)
 def predict_fight(fighter1: str, fighter2: str) -> dict:
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
-
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
-
     avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
-
     if avg_prob_f1 > avg_prob_f2:
-        winner = fighter1
-        loser = fighter2
-        win_prob = avg_prob_f1
+        winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
     else:
-        winner = fighter2
-        loser = fighter1
-        win_prob = avg_prob_f2
-
+        winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
     return {
         "winner": winner,
         "win_prob": f"{round(float(win_prob) * 100, 1)}%",
@@ -210,27 +193,18 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     """Vrací prediction + SHAP hodnoty seskupené podle kategorií"""
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
-
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
-
     avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
-
     if avg_prob_f1 > avg_prob_f2:
-        winner = fighter1
-        loser = fighter2
-        win_prob = avg_prob_f1
+        winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
     else:
-        winner = fighter2
-        loser = fighter1
-        win_prob = avg_prob_f2
+        winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
 
-    # SHAP hodnoty pro fighter1
-    shap_values_f1 = explainer.shap_values(input_1)[1]  # pro class 1
+    shap_values_f1 = explainer.shap_values(input_1)[1]  
     shap_df = pd.DataFrame(shap_values_f1, columns=selected_features)
 
-    # Seskupení SHAP hodnot podle kategorií
     shap_groups = {}
     for group_name, features in groups.items():
         shap_groups[group_name] = float(shap_df[features].sum(axis=1))
