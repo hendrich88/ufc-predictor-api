@@ -4,7 +4,7 @@ from predictor import predict_fight, predict_fight_with_shap
 app = FastAPI(
     title="UFC Fight Predictor",
     description="API pro predikci UFC zápasů s možností SHAP hodnot",
-    version="1.1"
+    version="1.2"
 )
 
 @app.get("/")
@@ -23,8 +23,10 @@ def predict(fighter1: str, fighter2: str):
     try:
         return predict_fight(fighter1, fighter2)
     except ValueError as ve:
+        # Nenalezený bojovník
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
+        # Jiné neočekávané chyby
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/predict_shap")
@@ -38,6 +40,8 @@ def predict_shap(fighter1: str, fighter2: str):
     try:
         return predict_fight_with_shap(fighter1, fighter2)
     except ValueError as ve:
+        # Nenalezený bojovník
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
+        # Jiné neočekávané chyby
         raise HTTPException(status_code=500, detail=str(e))
