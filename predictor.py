@@ -5,6 +5,7 @@ from datetime import date
 from joblib import load
 import shap
 import numpy as np
+import json
 
 # ======================
 # KONFIG
@@ -112,7 +113,7 @@ groups = {
 }
 
 # ======================
-# FUNKCE
+# INPUT + BUILD
 # ======================
 
 def get_stats_from_row(row, inactive_days):
@@ -152,7 +153,7 @@ def build_input_df(fighter1, fighter2):
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
 # ======================
-# PUBLIC API
+# PREDIKCE
 # ======================
 
 def predict_fight(fighter1: str, fighter2: str) -> dict:
@@ -178,15 +179,9 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
     }
 
 def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    # ======================
-    # 1) INPUTY
-    # ======================
     input_1 = build_input_df(fighter1, fighter2)
     input_2 = build_input_df(fighter2, fighter1)
 
-    # ======================
-    # 2) PREDIKCE (symetrická)
-    # ======================
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
 
@@ -206,27 +201,16 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         win_input = input_2
         lose_input = input_1
 
-    # ======================
-    # 3) SHAP – ROBUSTNÍ EXTRAKCE
-    # ======================
     def extract_class1_shap(x):
         sv = explainer.shap_values(x)
-
-        # případ 1: list [class0, class1]
         if isinstance(sv, list):
             sv = sv[1]
-
         sv = np.asarray(sv)
-
-        # případ 2: (1, n_features, 2) → vezmi class=1
         if sv.ndim == 3:
             sv = sv[:, :, 1]
-
-        # teď MUSÍ být (1, n_features)
         if sv.ndim != 2:
             raise ValueError(f"Unexpected SHAP shape: {sv.shape}")
-
-        return sv[0]  # → (n_features,)
+        return sv[0]
 
     shap_win = extract_class1_shap(win_input)
     shap_lose = extract_class1_shap(lose_input)
@@ -234,33 +218,17 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     shap_win_df = pd.DataFrame([shap_win], columns=selected_features)
     shap_lose_df = pd.DataFrame([shap_lose], columns=selected_features)
 
-    # ======================
-    # 4) SYMETRICKÉ SHAP SKUPINY
-    # (winner − loser) / 2
-    # ======================
     shap_groups = {}
-
     for group_name, features in groups.items():
         w = shap_win_df[features].sum(axis=1).iloc[0]
         l = shap_lose_df[features].sum(axis=1).iloc[0]
         shap_groups[group_name] = (w - l) / 2
 
-    # ======================
-    # 5) ZNAMÉNKA → vítěz = +
-    # ======================
     if sum(shap_groups.values()) < 0:
         shap_groups = {k: -v for k, v in shap_groups.items()}
 
-    # ======================
-    # 6) ×100 + ŘAZENÍ DLE VÝZNAMNOSTI
-    # ======================
-    shap_groups = {
-        k: round(v * 100, 2) for k, v in shap_groups.items()
-    }
-
-    shap_groups = dict(
-        sorted(shap_groups.items(), key=lambda x: abs(x[1]), reverse=True)
-    )
+    shap_groups = {k: round(v * 100, 2) for k, v in shap_groups.items()}
+    shap_groups = dict(sorted(shap_groups.items(), key=lambda x: abs(x[1]), reverse=True))
 
     return {
         "winner": winner,
@@ -270,14 +238,34 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
         "shap_groups": shap_groups
     }
 
+# ======================
+# PREDIKCE CELÉHO EVENTU
+# ======================
 
+from input import event_fighters1, event_fighters2
 
+def predict_event_with_shap_all():
+    if len(event_fighters1) != len(event_fighters2):
+        raise ValueError("event_fighters1 a event_fighters2 nemají stejnou délku")
 
+    results = {
+        "generated_at": pd.Timestamp.utcnow().isoformat() + "Z",
+        "total_fights": len(event_fighters1),
+        "fights": []
+    }
 
+    for f1, f2 in zip(event_fighters1, event_fighters2):
+        try:
+            res = predict_fight_with_shap(f1, f2)
+            results["fights"].append(res)
+        except Exception as e:
+            results["fights"].append({
+                "fighter1": f1,
+                "fighter2": f2,
+                "error": str(e)
+            })
+    return results
 
-
-
-
-
-
-
+def save_event_to_json(data, filename="event_predictions.json"):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
