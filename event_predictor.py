@@ -4,7 +4,6 @@ from datetime import datetime
 from predictor import predict_fight_with_shap
 from input import event_fighters1, event_fighters2
 
-
 OUTPUT_FILE = "event_predictions.json"
 
 
@@ -50,13 +49,13 @@ def predict_event_with_shap():
     return event_results
 
 
-def save_to_json(data, filename):
+def save_to_json(data, filename=OUTPUT_FILE):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-if __name__ == "__main__":
-    results = predict_event_with_shap()
-    save_to_json(results, OUTPUT_FILE)
-
-    print(f"\n✅ Event uložen do souboru: {OUTPUT_FILE}")
+# === Odstraněno spouštění při importu ===
+# if __name__ == "__main__":
+#     results = predict_event_with_shap()
+#     save_to_json(results, OUTPUT_FILE)
+#     print(f"\n✅ Event uložen do souboru: {OUTPUT_FILE}")
