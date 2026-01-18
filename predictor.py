@@ -260,11 +260,11 @@ def predict_event_with_shap_all():
 
             # ===== správné přiřazení win/lose odds =====
             if res["winner"] == f1:
-                res["win_odds"] = f"{round(odds_fighters1[idx] * 100, 1)}%"
-                res["lose_odds"] = f"{round(odds_fighters2[idx] * 100, 1)}%"
+                res["win_odds"] = f"{odds_fighters1[idx]}%"
+                res["lose_odds"] = f"{odds_fighters2[idx]}%"
             else:
-                res["win_odds"] = f"{round(odds_fighters2[idx] * 100, 1)}%"
-                res["lose_odds"] = f"{round(odds_fighters1[idx] * 100, 1)}%"
+                res["win_odds"] = f"{odds_fighters2[idx]}%"
+                res["lose_odds"] = f"{odds_fighters1[idx]}%"
 
             # Přidáme hit
             res["hit"] = default_hit[idx]
@@ -284,6 +284,7 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
