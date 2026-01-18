@@ -8,17 +8,14 @@ app = FastAPI(
     version="1.4"
 )
 
-
 @app.get("/")
 def root():
     return {"message": "UFC Predictor API is running"}
-
 
 @app.get("/predict")
 def predict(fighter1: str, fighter2: str):
     if fighter1 == fighter2:
         raise HTTPException(status_code=400, detail="Fighters must be different")
-
     try:
         return predict_fight(fighter1, fighter2)
     except ValueError as ve:
@@ -26,12 +23,10 @@ def predict(fighter1: str, fighter2: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/predict_shap")
 def predict_shap(fighter1: str, fighter2: str):
     if fighter1 == fighter2:
         raise HTTPException(status_code=400, detail="Fighters must be different")
-
     try:
         return predict_fight_with_shap(fighter1, fighter2)
     except ValueError as ve:
@@ -39,17 +34,16 @@ def predict_shap(fighter1: str, fighter2: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/predict-event")
-def predict_event():
+def predict_event(save_json: bool = False):
     """
     Endpoint pro predikci celého eventu.
-    Funkce predict_event_with_shap se zavolá až při requestu.
+    Volitelně lze uložit do JSON souboru.
     """
     try:
         results = event_predictor.predict_event_with_shap()
-        # volitelně uložit do JSON
-        event_predictor.save_to_json(results)
+        if save_json:
+            event_predictor.save_to_json(results)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
