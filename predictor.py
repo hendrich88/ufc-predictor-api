@@ -260,23 +260,18 @@ def predict_event_with_shap_all():
 
             # ===== správné přiřazení win/lose odds =====
             if res["winner"] == f1:
-                win_odds = 1 / odds_fighters1[idx]
-                lose_odds = 1 / odds_fighters2[idx]
+                res["win_odds"] = f"{round(odds_fighters1[idx] * 100, 1)}%"
+                res["lose_odds"] = f"{round(odds_fighters2[idx] * 100, 1)}%"
             else:
-                win_odds = 1 / odds_fighters2[idx]
-                lose_odds = 1 / odds_fighters1[idx]
+                res["win_odds"] = f"{round(odds_fighters2[idx] * 100, 1)}%"
+                res["lose_odds"] = f"{round(odds_fighters1[idx] * 100, 1)}%"
 
-            # Převedeme na procenta a zaokrouhlíme
-            res["win_odds"] = f"{round(win_odds * 100, 1)}%"
-            res["lose_odds"] = f"{round(lose_odds * 100, 1)}%"
-
-            # Přidáme default hit
+            # Přidáme hit
             res["hit"] = default_hit[idx]
 
             results["fights"].append(res)
 
         except Exception as e:
-            # Pokud nastane chyba, zaznamenáme ji
             results["fights"].append({
                 "fighter1": f1,
                 "fighter2": f2,
@@ -289,6 +284,7 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
