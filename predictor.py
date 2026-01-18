@@ -256,20 +256,22 @@ def predict_event_with_shap_all():
 
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
-            # 1️⃣ nejprve zjistit vítěze
+            # 1️⃣ predikce s SHAP, která určí vítěze
             res = predict_fight_with_shap(f1, f2)
             winner = res["winner"]
+            loser = res["loser"]
 
-            # 2️⃣ přiřadit správný odds vítězi a poraženému
+            # 2️⃣ správné přiřazení odds podle vítěze
             if winner == f1:
-                win_odds = round((1 / odds_fighters1[idx]) * 100, 1)
-                lose_odds = round((1 / odds_fighters2[idx]) * 100, 1)
+                win_odds = 1 / odds_fighters1[idx]
+                lose_odds = 1 / odds_fighters2[idx]
             else:
-                win_odds = round((1 / odds_fighters2[idx]) * 100, 1)
-                lose_odds = round((1 / odds_fighters1[idx]) * 100, 1)
+                win_odds = 1 / odds_fighters2[idx]
+                lose_odds = 1 / odds_fighters1[idx]
 
-            res["win_odds"] = f"{win_odds}%"
-            res["lose_odds"] = f"{lose_odds}%"
+            # 3️⃣ převod na procenta
+            res["win_odds"] = f"{round(win_odds * 100, 1)}%"
+            res["lose_odds"] = f"{round(lose_odds * 100, 1)}%"
             res["hit"] = default_hit[idx]
 
             results["fights"].append(res)
@@ -287,3 +289,4 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
