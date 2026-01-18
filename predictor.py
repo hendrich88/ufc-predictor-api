@@ -257,20 +257,23 @@ def predict_event_with_shap_all():
 
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
-            # 1️⃣ Určíme vítěze a poraženého
+            # 1️⃣ Predikce vítěze
             res = predict_fight_with_shap(f1, f2)
             winner = res["winner"]
             loser = res["loser"]
 
-            # 2️⃣ Vybereme správný odds pro vítěze a poraženého
+            # 2️⃣ Přiřazení správných odds podle skutečného vítěze
             if winner == f1:
                 win_odds_value = odds_fighters1[idx]
                 lose_odds_value = odds_fighters2[idx]
-            else:
+            elif winner == f2:
                 win_odds_value = odds_fighters2[idx]
                 lose_odds_value = odds_fighters1[idx]
+            else:
+                # Pokud model vrátil někoho, kdo není ani f1 ani f2 (bezpečnostní kontrola)
+                raise ValueError(f"Winner {winner} není ani f1 ani f2")
 
-            # 3️⃣ Převedeme odds na pravděpodobnost
+            # 3️⃣ Převedení odds na procenta
             res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
             res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
             res["hit"] = default_hit[idx]
@@ -290,3 +293,4 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
