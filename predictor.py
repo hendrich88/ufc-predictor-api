@@ -53,7 +53,7 @@ explainer = shap.TreeExplainer(model)
 
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
-MIN_VALUE = 0
+MIN_VALUE = 0  # spodní hranice pro všechny statistiky
 
 def apply_decay(value, inactive_days):
     if inactive_days <= DECAY_THRESHOLD:
@@ -153,7 +153,7 @@ def build_input_df(fighter1, fighter2):
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
 # ======================
-# PREDIKCE JEDNOTLIVÉHO ZÁPASU
+# PREDIKCE
 # ======================
 
 def predict_fight(fighter1: str, fighter2: str) -> dict:
@@ -242,17 +242,22 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
 # PREDIKCE CELÉHO EVENTU
 # ======================
 
-from input import event_fighters1, event_fighters2, event_date, event, odds_fighters1, odds_fighters2, hit as default_hit
+from input import (
+    event_fighters1, event_fighters2,
+    odds_fighters1, odds_fighters2,
+    event_date, event, event_accuracy, event_roi,
+    hit as default_hit
+)
 
 def predict_event_with_shap_all():
     if len(event_fighters1) != len(event_fighters2):
         raise ValueError("event_fighters1 a event_fighters2 nemají stejnou délku")
 
-    results = {
+    event_results = {
         "event_date": event_date,
         "event": event,
-        "event_accuracy": 0.0,
-        "event_roi": 0.0,
+        "event_accuracy": event_accuracy,
+        "event_roi": event_roi,
         "event_fights": len(event_fighters1),
         "fights": []
     }
@@ -261,36 +266,30 @@ def predict_event_with_shap_all():
         try:
             res = predict_fight_with_shap(f1, f2)
 
+            # přiřazení kurzů vítěze a poraženého
             if res["winner"] == f1:
-                win_odds = odds_fighters1[idx]
+                win_odds_val = 1 / odds_fighters1[idx]
+                lose_odds_val = 1 / odds_fighters2[idx]
             else:
-                win_odds = odds_fighters2[idx]
+                win_odds_val = 1 / odds_fighters2[idx]
+                lose_odds_val = 1 / odds_fighters1[idx]
 
-            win_prob_calc = round((1 / win_odds) * 100, 1)
+            res["win_odds"] = f"{round(win_odds_val * 100, 1)}%"
+            res["lose_odds"] = f"{round(lose_odds_val * 100, 1)}%"
 
-            fight_result = {
-                "fighter1": f1,
-                "fighter2": f2,
-                "winner": res["winner"],
-                "win_prob": res["win_prob"],
-                "win_odds": f"{win_prob_calc}%",
-                "loser": res["loser"],
-                "lose_prob": res["lose_prob"],
-                "shap_groups": res["shap_groups"],
-                "hit": default_hit[idx]
-            }
+            # Přidání hit (defaultně -1)
+            res["hit"] = default_hit[idx] if idx < len(default_hit) else -1
 
-            results["fights"].append(fight_result)
-
+            event_results["fights"].append(res)
         except Exception as e:
-            results["fights"].append({
+            event_results["fights"].append({
                 "fighter1": f1,
                 "fighter2": f2,
                 "error": str(e),
                 "hit": -1
             })
 
-    return results
+    return event_results
 
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
