@@ -17,5 +17,5 @@ odds_fighters2 = [2.69, 2.48, 3.37, 1.37, 3.74, 7.33,
 
 hit = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
 
-evet_accuracy = 0.0
-event_roi = 0.0
+event_accuracy = 0
+event_roi = 0
