@@ -1,9 +1,13 @@
-gradio
+fastapi
+uvicorn
+gunicorn
+
 pandas
 numpy
 joblib
 requests
 scikit-learn
 shap>=0.42.1
+
 
 
