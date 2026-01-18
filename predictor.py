@@ -53,7 +53,7 @@ explainer = shap.TreeExplainer(model)
 
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
-MIN_VALUE = 0  # spodní hranice pro všechny statistiky
+MIN_VALUE = 0
 
 def apply_decay(value, inactive_days):
     if inactive_days <= DECAY_THRESHOLD:
@@ -153,7 +153,7 @@ def build_input_df(fighter1, fighter2):
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
 # ======================
-# PREDIKCE
+# PREDIKCE JEDNOTLIVÉHO ZÁPASU
 # ======================
 
 def predict_fight(fighter1: str, fighter2: str) -> dict:
@@ -242,28 +242,54 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
 # PREDIKCE CELÉHO EVENTU
 # ======================
 
-from input import event_fighters1, event_fighters2
+from input import event_fighters1, event_fighters2, event_date, event, odds_fighters1, odds_fighters2, hit as default_hit
 
 def predict_event_with_shap_all():
     if len(event_fighters1) != len(event_fighters2):
         raise ValueError("event_fighters1 a event_fighters2 nemají stejnou délku")
 
     results = {
-        "generated_at": pd.Timestamp.utcnow().isoformat() + "Z",
-        "total_fights": len(event_fighters1),
+        "event_date": event_date,
+        "event": event,
+        "event_accuracy": 0.0,
+        "event_roi": 0.0,
+        "event_fights": len(event_fighters1),
         "fights": []
     }
 
-    for f1, f2 in zip(event_fighters1, event_fighters2):
+    for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
             res = predict_fight_with_shap(f1, f2)
-            results["fights"].append(res)
+
+            if res["winner"] == f1:
+                win_odds = odds_fighters1[idx]
+            else:
+                win_odds = odds_fighters2[idx]
+
+            win_prob_calc = round((1 / win_odds) * 100, 1)
+
+            fight_result = {
+                "fighter1": f1,
+                "fighter2": f2,
+                "winner": res["winner"],
+                "win_prob": res["win_prob"],
+                "win_odds": f"{win_prob_calc}%",
+                "loser": res["loser"],
+                "lose_prob": res["lose_prob"],
+                "shap_groups": res["shap_groups"],
+                "hit": default_hit[idx]
+            }
+
+            results["fights"].append(fight_result)
+
         except Exception as e:
             results["fights"].append({
                 "fighter1": f1,
                 "fighter2": f2,
-                "error": str(e)
+                "error": str(e),
+                "hit": -1
             })
+
     return results
 
 def save_event_to_json(data, filename="event_predictions.json"):
