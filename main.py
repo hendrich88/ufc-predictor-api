@@ -1,11 +1,15 @@
 from fastapi import FastAPI, HTTPException
-import event_predictor
-from predictor import predict_fight, predict_fight_with_shap
+from predictor import (
+    predict_fight,
+    predict_fight_with_shap,
+    predict_event_with_shap_all,
+    save_event_to_json
+)
 
 app = FastAPI(
     title="UFC Fight Predictor",
     description="API pro predikci UFC zápasů a eventů včetně SHAP hodnot",
-    version="1.4"
+    version="1.5"
 )
 
 @app.get("/")
@@ -36,14 +40,10 @@ def predict_shap(fighter1: str, fighter2: str):
 
 @app.get("/predict-event")
 def predict_event(save_json: bool = False):
-    """
-    Endpoint pro predikci celého eventu.
-    Volitelně lze uložit do JSON souboru.
-    """
     try:
-        results = event_predictor.predict_event_with_shap()
+        results = predict_event_with_shap_all()
         if save_json:
-            event_predictor.save_to_json(results)
+            save_event_to_json(results)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
