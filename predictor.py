@@ -150,7 +150,7 @@ def build_input_df(fighter1, fighter2):
     return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
 
 # ======================
-# PREDIKCE
+# PREDIKCE S MODELEM
 # ======================
 
 def predict_fight(fighter1: str, fighter2: str) -> dict:
@@ -170,14 +170,18 @@ def predict_fight(fighter1: str, fighter2: str) -> dict:
 
     return {
         "winner": winner,
-        "win_prob": f"{round(float(win_prob) * 100, 1)}%",
+        "win_prob": f"{round(win_prob * 100, 1)}%",
         "loser": loser,
-        "lose_prob": f"{round((1 - float(win_prob)) * 100, 1)}%"
+        "lose_prob": f"{round((1 - win_prob) * 100, 1)}%"
     }
 
-def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
-    input_1 = build_input_df(fighter1, fighter2)
-    input_2 = build_input_df(fighter2, fighter1)
+# ======================
+# PREDIKCE S SHAP
+# ======================
+
+def predict_fight_with_shap(f1: str, f2: str) -> dict:
+    input_1 = build_input_df(f1, f2)
+    input_2 = build_input_df(f2, f1)
 
     prob1 = model.predict_proba(input_1)[0]
     prob2 = model.predict_proba(input_2)[0]
@@ -186,18 +190,15 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
     avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
 
     if avg_prob_f1 >= avg_prob_f2:
-        winner = fighter1
-        loser = fighter2
+        winner, loser = f1, f2
         win_prob = avg_prob_f1
-        win_input = input_1
-        lose_input = input_2
+        win_input, lose_input = input_1, input_2
     else:
-        winner = fighter2
-        loser = fighter1
+        winner, loser = f2, f1
         win_prob = avg_prob_f2
-        win_input = input_2
-        lose_input = input_1
+        win_input, lose_input = input_2, input_1
 
+    # SHAP values
     def extract_class1_shap(x):
         sv = explainer.shap_values(x)
         if isinstance(sv, list):
@@ -256,12 +257,12 @@ def predict_event_with_shap_all():
 
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
-            # 1️⃣ určíme vítěze a poraženého
+            # 1️⃣ Určíme vítěze a poraženého
             res = predict_fight_with_shap(f1, f2)
             winner = res["winner"]
             loser = res["loser"]
 
-            # 2️⃣ vybereme správný odds pro vítěze a poraženého
+            # 2️⃣ Vybereme správný odds pro vítěze a poraženého
             if winner == f1:
                 win_odds_value = odds_fighters1[idx]
                 lose_odds_value = odds_fighters2[idx]
@@ -269,7 +270,7 @@ def predict_event_with_shap_all():
                 win_odds_value = odds_fighters2[idx]
                 lose_odds_value = odds_fighters1[idx]
 
-            # 3️⃣ převedeme odds na procenta
+            # 3️⃣ Převedeme odds na pravděpodobnost
             res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
             res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
             res["hit"] = default_hit[idx]
@@ -289,5 +290,3 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
