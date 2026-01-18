@@ -59,4 +59,4 @@ if __name__ == "__main__":
     results = predict_event_with_shap()
     save_to_json(results, OUTPUT_FILE)
 
-    print(f"\n✅ Event uložen do souboru: {OUTPUT_FILE}"
+    print(f"\n✅ Event uložen do souboru: {OUTPUT_FILE}")
