@@ -120,11 +120,8 @@ def get_stats_from_row(row, inactive_days):
     data = {}
     data['age'] = -(row['age'] + inactive_days / 365.25)
     for stat in stats:
-        if stat == "ratio_reach":
-            data[stat] = row.get(stat, 0)
-        else:
-            val = row.get(stat, 0)
-            data[stat] = apply_decay(val, inactive_days)
+        val = row.get(stat, 0)
+        data[stat] = apply_decay(val, inactive_days)
     data['elo_before'] = apply_decay(row['elo_before1'], inactive_days)
     return data
 
@@ -242,18 +239,13 @@ def predict_fight_with_shap(fighter1: str, fighter2: str) -> dict:
 # PREDIKCE CELÉHO EVENTU
 # ======================
 
-from input import (
-    event_fighters1, event_fighters2,
-    odds_fighters1, odds_fighters2,
-    event_date, event, event_accuracy, event_roi,
-    hit as default_hit
-)
+from input import event_fighters1, event_fighters2, odds_fighters1, odds_fighters2, hit as default_hit, event_date, event, event_accuracy, event_roi
 
 def predict_event_with_shap_all():
     if len(event_fighters1) != len(event_fighters2):
         raise ValueError("event_fighters1 a event_fighters2 nemají stejnou délku")
 
-    event_results = {
+    results = {
         "event_date": event_date,
         "event": event,
         "event_accuracy": event_accuracy,
@@ -266,30 +258,29 @@ def predict_event_with_shap_all():
         try:
             res = predict_fight_with_shap(f1, f2)
 
-            # přiřazení kurzů vítěze a poraženého
+            # Win/Lose odds podle skutečného vítěze a poraženého
             if res["winner"] == f1:
-                win_odds_val = 1 / odds_fighters1[idx]
-                lose_odds_val = 1 / odds_fighters2[idx]
+                win_odds = round(1 / odds_fighters1[idx] * 100, 1)
+                lose_odds = round(1 / odds_fighters2[idx] * 100, 1)
             else:
-                win_odds_val = 1 / odds_fighters2[idx]
-                lose_odds_val = 1 / odds_fighters1[idx]
+                win_odds = round(1 / odds_fighters2[idx] * 100, 1)
+                lose_odds = round(1 / odds_fighters1[idx] * 100, 1)
 
-            res["win_odds"] = f"{round(win_odds_val * 100, 1)}%"
-            res["lose_odds"] = f"{round(lose_odds_val * 100, 1)}%"
+            res["win_odds"] = f"{win_odds}%"
+            res["lose_odds"] = f"{lose_odds}%"
+            res["hit"] = default_hit[idx]
 
-            # Přidání hit (defaultně -1)
-            res["hit"] = default_hit[idx] if idx < len(default_hit) else -1
+            results["fights"].append(res)
 
-            event_results["fights"].append(res)
         except Exception as e:
-            event_results["fights"].append({
+            results["fights"].append({
                 "fighter1": f1,
                 "fighter2": f2,
                 "error": str(e),
-                "hit": -1
+                "hit": default_hit[idx]
             })
 
-    return event_results
+    return results
 
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
