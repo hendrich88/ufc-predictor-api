@@ -11,13 +11,9 @@ app = FastAPI(
 
 @app.get("/")
 def root():
-    """Healthcheck – ověření, že API běží"""
     return {"message": "UFC Predictor API is running"}
 
 
-# =====================================================
-# SINGLE FIGHT – BEZ SHAP
-# =====================================================
 @app.get("/predict")
 def predict(fighter1: str, fighter2: str):
     if fighter1 == fighter2:
@@ -31,9 +27,6 @@ def predict(fighter1: str, fighter2: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =====================================================
-# SINGLE FIGHT – SE SHAP
-# =====================================================
 @app.get("/predict_shap")
 def predict_shap(fighter1: str, fighter2: str):
     if fighter1 == fighter2:
@@ -47,18 +40,9 @@ def predict_shap(fighter1: str, fighter2: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =====================================================
-# EVENT – SE SHAP (HLAVNÍ ENDPOINT)
-# =====================================================
 @app.get("/predict-event")
 def predict_event():
-    """
-    Endpoint pro predikci celého UFC eventu (včetně SHAP hodnot)
-    Fight card se bere z input.py
-    """
     try:
         return predict_event_with_shap()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
