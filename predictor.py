@@ -259,14 +259,23 @@ def predict_event_with_shap_all():
             res = predict_fight_with_shap(f1, f2)
 
             # ===== správné přiřazení win/lose odds =====
-            # Předpokládáme, že odds jsou v desítkovém formátu (např. 1.41)
-            if res["winner"] == f1:
-                res["win_odds"] = f"{round((1 / odds_fighters1[idx]) * 100, 1)}%"
-                res["lose_odds"] = f"{round((1 / odds_fighters2[idx]) * 100, 1)}%"
-            else:
-                res["win_odds"] = f"{round((1 / odds_fighters2[idx]) * 100, 1)}%"
-                res["lose_odds"] = f"{round((1 / odds_fighters1[idx]) * 100, 1)}%"
+            winner = res["winner"]
+            loser = res["loser"]
 
+            # Kontrola, zda jsou odds v desítkovém formátu
+            odds_f1 = odds_fighters1[idx]
+            odds_f2 = odds_fighters2[idx]
+
+            if winner == f1:
+                win_odds = odds_f1
+                lose_odds = odds_f2
+            else:
+                win_odds = odds_f2
+                lose_odds = odds_f1
+
+            # Převedeme na procenta
+            res["win_odds"] = f"{round((1 / win_odds) * 100, 1)}%"
+            res["lose_odds"] = f"{round((1 / lose_odds) * 100, 1)}%"
             res["hit"] = default_hit[idx]
 
             results["fights"].append(res)
@@ -284,4 +293,5 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
