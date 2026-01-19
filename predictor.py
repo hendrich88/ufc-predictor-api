@@ -1,3 +1,19 @@
+# ======================
+# AUTO LOAD INPUT.PY
+# ======================
+
+INPUT_URL = "https://raw.githubusercontent.com/hendrich88/input-ufc-predictor-api/main/input.py"
+INPUT_FILE = "input.py"
+
+import os
+import requests
+
+if not os.path.exists(INPUT_FILE):
+    r = requests.get(INPUT_URL, timeout=30)
+    r.raise_for_status()
+    with open(INPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(r.text)
+
 import os
 import requests
 import pandas as pd
@@ -293,4 +309,5 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
