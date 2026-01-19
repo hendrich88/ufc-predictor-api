@@ -2,7 +2,7 @@
 # AUTO LOAD INPUT.PY
 # ======================
 
-INPUT_URL = "https://raw.githubusercontent.com/hendrich88/input-ufc-predictor-api/main/input.py"
+INPUT_URL = "https://raw.githubusercontent.com/hendrich88/data-ufc-predictor/main/input.py"
 INPUT_FILE = "input.py"
 
 import os
@@ -309,5 +309,6 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
