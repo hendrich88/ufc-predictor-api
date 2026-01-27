@@ -278,34 +278,27 @@ def predict_event_with_shap_all():
         "event": event,
         "event_accuracy": event_accuracy,
         "event_roi": event_roi,
-        "event_fights": len(event_fighters1),
+        "event_fights": 0,
         "fights": []
     }
 
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
-            # 1️⃣ Predikce vítěze + SHAP
             res = predict_fight_with_shap(f1, f2)
 
-            # 🔥 FILTR: pouze pokud win_prob > limit_pred
             win_prob_pct = float(res["win_prob"].replace("%", ""))
-            if win_prob_pct < limit_pred:
-                continue  # přeskočit fight
+            if win_prob_pct <= limit_pred:
+                continue
 
             winner = res["winner"]
-            loser = res["loser"]
 
-            # 2️⃣ Přiřazení správných odds
             if winner == f1:
                 win_odds_value = odds_fighters1[idx]
                 lose_odds_value = odds_fighters2[idx]
-            elif winner == f2:
+            else:
                 win_odds_value = odds_fighters2[idx]
                 lose_odds_value = odds_fighters1[idx]
-            else:
-                raise ValueError(f"Winner {winner} není ani f1 ani f2")
 
-            # 3️⃣ Odds → procenta
             res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
             res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
             res["hit"] = default_hit[idx]
@@ -313,18 +306,15 @@ def predict_event_with_shap_all():
             results["fights"].append(res)
 
         except Exception as e:
-            results["fights"].append({
-                "fighter1": f1,
-                "fighter2": f2,
-                "error": str(e),
-                "hit": default_hit[idx]
-            })
+            continue  # chyby klidně ignorujeme, ať nelítají do výsledků
 
+    results["event_fights"] = len(results["fights"])
     return results
 
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
