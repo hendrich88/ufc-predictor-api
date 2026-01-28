@@ -299,14 +299,23 @@ def predict_event_with_shap_all():
                 win_odds_value = odds_fighters2[idx]
                 lose_odds_value = odds_fighters1[idx]
 
+            # win_prob jako číslo (0–1)
+            win_prob = win_prob_pct / 100
+
+            # EDGE výpočet
+            edge = ((win_prob / win_odds_value) - 1) * 100
+
+            # výstupy
+            res["win_prob"] = f"{round(win_prob_pct, 1)}%"
+            res["edge"] = f"{round(edge, 2)}%"
             res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
             res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
             res["hit"] = default_hit[idx]
 
             results["fights"].append(res)
 
-        except Exception as e:
-            continue  # chyby klidně ignorujeme, ať nelítají do výsledků
+        except Exception:
+            continue  # chyby ignorujeme
 
     results["event_fights"] = len(results["fights"])
     return results
@@ -314,6 +323,7 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
