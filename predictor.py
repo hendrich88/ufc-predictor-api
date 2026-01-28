@@ -292,6 +292,7 @@ def predict_event_with_shap_all():
 
             winner = res["winner"]
 
+            # určení správného kurzu pro vítěze
             if winner == f1:
                 win_odds_value = odds_fighters1[idx]
                 lose_odds_value = odds_fighters2[idx]
@@ -299,15 +300,18 @@ def predict_event_with_shap_all():
                 win_odds_value = odds_fighters2[idx]
                 lose_odds_value = odds_fighters1[idx]
 
-            # win_prob jako číslo (0–1)
-            win_prob = win_prob_pct / 100
+            # win_prob jako číslo 0–1
+            win_prob_decimal = win_prob_pct / 100
 
-            # EDGE výpočet
-            edge = ((win_prob / win_odds_value) - 1) * 100
+            # implied probability z kurzu
+            implied_prob = 1 / win_odds_value
 
-            # výstupy
-            res["win_prob"] = f"{round(win_prob_pct, 1)}%"
+            # edge v %
+            edge = (win_prob_decimal - implied_prob) / implied_prob * 100
+
+            # uložíme do res JSON, edge nad win_prob
             res["edge"] = f"{round(edge, 2)}%"
+            res["win_prob"] = f"{round(win_prob_pct, 1)}%"
             res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
             res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
             res["hit"] = default_hit[idx]
@@ -323,6 +327,7 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
