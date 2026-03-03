@@ -128,16 +128,23 @@ def make_input_df(diffs):
 # SHAP ANALÝZA
 # ======================
 groups = {
-    'Age Index (AI)': ["diff_age_index"],
-    'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate", "diff_win_rate"],
-    'Damage Resistance (AI)': ["diff_avg_balance_damage"],
-    'Reach': ["diff_ratio_reach"],
-    'Ranking (AI)': ["diff_elo_before"],
-    'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
-    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
-    'Wrestling': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd", "diff_avg_cplx_min_td_thr_get"],
-    'Grappling': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_avg_cplx_sub_att"]
-}
+        'Age Index (AI)': ["diff_age_index"],
+        'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate"],
+        'Damage Resistance (AI)': ["diff_win_rate","diff_avg_balance_damage"],
+        'Reach': ["diff_ratio_reach"],
+        'Win/Lose Rates': ["diff_win_rate","diff_lose_rate"],
+        'Ranking (AI)': ["diff_elo_before"],
+        'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
+        'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
+        'Kickboxing Attack': ["diff_smt_acc_att_sig_strikes_body_lnd","diff_smt_acc_att_sig_strikes_dist_lnd","diff_ratio_def_sig_strikes_lnd_get","diff_ratio_att_sig_strikes_body_lnd"],
+        'Kickboxing Defense': ["diff_avg_cplx_sig_strikes_body_thr_get"],
+        'Wrestling Attack': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd"],
+        'Wrestling Defense': ["diff_avg_cplx_min_td_thr_get","diff_avg_cntrl_get"],
+        'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
+        'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
+        'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
+        'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
+    }
 
 def extract_shap_impact(input_df):
     sv = explainer.shap_values(input_df)
@@ -234,3 +241,4 @@ def predict_event_with_shap_all():
         except Exception as e:
             print(f"Chyba u {f1} vs {f2}: {e}")
     return results
+
