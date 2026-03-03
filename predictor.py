@@ -32,9 +32,10 @@ from input import (
 # KONFIGURACE CEST
 # ======================
 JSON_FILE = "df_prep_clean_2026-03-02.json"
-AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_model_age.joblib"
+AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/ufc_predict_models/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_calib3.joblib"
+
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/ufc_predict_models/rf_calib3.joblib"
 MODEL_FILE = "rf_calib3.joblib"
 
 def download_file(url, filename):
@@ -220,6 +221,7 @@ if __name__ == "__main__":
     with open("event_predictions.json", "w", encoding="utf-8") as f:
         json.dump(final_json, f, ensure_ascii=False, indent=2)
     print("Hotovo. Predikce uloženy do event_predictions.json")
+
 
 
 
