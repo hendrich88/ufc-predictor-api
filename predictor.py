@@ -132,7 +132,6 @@ groups = {
         'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate"],
         'Damage Resistance (AI)': ["diff_win_rate","diff_avg_balance_damage"],
         'Reach': ["diff_ratio_reach"],
-        'Win/Lose Rates': ["diff_win_rate","diff_lose_rate"],
         'Ranking (AI)': ["diff_elo_before"],
         'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
         'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
@@ -251,5 +250,6 @@ def predict_event_with_shap_all():
         except Exception as e:
             print(f"Chyba u {f1} vs {f2}: {e}")
     return results
+
 
 
