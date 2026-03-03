@@ -1,61 +1,36 @@
 import os
-import uvicorn
 from fastapi import FastAPI, HTTPException
-from predictor import (
-    predict_fight,
-    predict_fight_with_shap,
-    predict_event_with_shap_all,
-    save_event_to_json
-)
+import uvicorn
 
-app = FastAPI(
-    title="UFC Fight Predictor",
-    description="API pro predikci UFC zápasů a eventů včetně SHAP hodnot",
-    version="1.5"
-)
+app = FastAPI(title="UFC Predictor API")
+
+# Importy z predictor.py dáme DOVNITŘ funkcí, aby se nespouštěly při startu
+# To umožní aplikaci okamžitě otevřít port
 
 @app.get("/")
 def root():
-    return {"message": "UFC Predictor API is running"}
-
-@app.get("/predict")
-def predict(fighter1: str, fighter2: str):
-    if fighter1 == fighter2:
-        raise HTTPException(status_code=400, detail="Fighters must be different")
-    try:
-        return predict_fight(fighter1, fighter2)
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/predict_shap")
-def predict_shap(fighter1: str, fighter2: str):
-    if fighter1 == fighter2:
-        raise HTTPException(status_code=400, detail="Fighters must be different")
-    try:
-        return predict_fight_with_shap(fighter1, fighter2)
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "API je online. Modely se stahují na pozadí nebo při prvním volání."}
 
 @app.get("/predict-event")
 def predict_event(save_json: bool = False):
     try:
+        # Import se provede až tady - Render už mezitím aplikaci schválil jako běžící
+        from predictor import predict_event_with_shap_all, save_event_to_json
         results = predict_event_with_shap_all()
         if save_json:
             save_event_to_json(results)
         return results
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chyba při predikci: {str(e)}")
+
+@app.get("/predict_shap")
+def predict_shap(fighter1: str, fighter2: str):
+    try:
+        from predictor import predict_fight_with_shap
+        return predict_fight_with_shap(fighter1, fighter2)
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==========================================
-# START SEKCE PRO RENDER (PORT BINDING)
-# ==========================================
 if __name__ == "__main__":
-    # Render automaticky dává port do env proměnné PORT, pokud tam není, použije 10000
     port = int(os.environ.get("PORT", 10000))
-    # Host musí být 0.0.0.0, aby byl server dostupný zvenčí
     uvicorn.run(app, host="0.0.0.0", port=port)
-
