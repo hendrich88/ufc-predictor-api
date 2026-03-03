@@ -148,13 +148,23 @@ groups = {
 
 def extract_shap_impact(input_df):
     sv = explainer.shap_values(input_df)
-    if isinstance(sv, list): s = sv[1][0]
-    else: s = sv[0, :, 1] if sv.ndim == 3 else sv[0]
+    # Výběr správné dimenze pro CalibratedClassifierCV
+    if isinstance(sv, list): 
+        s = sv[1][0]
+    else: 
+        s = sv[0, :, 1] if sv.ndim == 3 else sv[0]
+    
     group_res = {}
     for g_name, g_feats in groups.items():
+        # Součet SHAP hodnot pro danou skupinu
         val = sum([s[model_required_features.index(f)] for f in g_feats if f in model_required_features])
         group_res[g_name] = round(val * 100, 2)
-    return group_res
+    
+    # SEŘAZENÍ: Převedeme na list tuplů a seřadíme podle absolutní hodnoty (x[1]) sestupně
+    sorted_impacts = sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True)
+    
+    # Převedeme zpět na slovník (Python 3.7+ zachovává pořadí vložení)
+    return dict(sorted_impacts)
 
 # ======================
 # PŘIDANÉ FUNKCE PRO API
@@ -241,4 +251,5 @@ def predict_event_with_shap_all():
         except Exception as e:
             print(f"Chyba u {f1} vs {f2}: {e}")
     return results
+
 
