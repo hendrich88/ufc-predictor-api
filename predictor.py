@@ -187,21 +187,42 @@ def predict_fight(f1, f2):
     }
 
 def predict_fight_with_shap(f1, f2):
-    """Predikce s analýzou dopadu parametrů (SHAP)."""
-    r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-    r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-    if r1.empty or r2.empty:
-        raise ValueError(f"Bojovník {(f1 if r1.empty else f2)} nebyl nalezen.")
+    """Predikce s analýzou dopadu parametrů (SHAP) a symetrickým výpočtem."""
+    r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
+    r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
     
-    diffs = build_diff(r1.iloc[0], r2.iloc[0], f1, f2, df_stats)
-    input_df = make_input_df(diffs)
-    prob = model.predict_proba(input_df)[0][1]
-    shap_impacts = extract_shap_impact(input_df)
+    if r1_rows.empty or r2_rows.empty:
+        raise ValueError(f"Bojovník {(f1 if r1_rows.empty else f2)} nebyl nalezen.")
+    
+    row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
+    
+    # Symetrický výpočet (stejně jako v predict_event)
+    in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
+    in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
+    
+    p1 = model.predict_proba(in1)[0]
+    p2 = model.predict_proba(in2)[0]
+    
+    # Průměrování pravděpodobností pro F1
+    avg_p1 = (p1[1] + (1 - p2[1])) / 2
+    avg_p2 = (p1[0] + (1 - p2[0])) / 2
+    
+    if avg_p1 > avg_p2:
+        winner, win_prob = f1, avg_p1
+        # SHAP počítáme pro vítěze
+        shap_input = in1
+    else:
+        winner, win_prob = f2, avg_p2
+        # SHAP počítáme pro vítěze
+        shap_input = in2
+
+    shap_impacts = extract_shap_impact(shap_input)
     
     return {
-        "fighter1": f1, "fighter2": f2,
-        "probability": f"{round(prob * 100, 1)}%",
-        "winner_prediction": f1 if prob > 0.5 else f2,
+        "fighter1": f1,
+        "fighter2": f2,
+        "probability": f"{round(win_prob * 100, 1)}%",
+        "winner_prediction": winner,
         "shap_analysis": shap_impacts
     }
 
@@ -250,6 +271,7 @@ def predict_event_with_shap_all():
         except Exception as e:
             print(f"Chyba u {f1} vs {f2}: {e}")
     return results
+
 
 
 
