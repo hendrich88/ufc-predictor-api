@@ -1,3 +1,5 @@
+import os
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from predictor import (
     predict_fight,
@@ -47,3 +49,13 @@ def predict_event(save_json: bool = False):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# START SEKCE PRO RENDER (PORT BINDING)
+# ==========================================
+if __name__ == "__main__":
+    # Render automaticky dává port do env proměnné PORT, pokud tam není, použije 10000
+    port = int(os.environ.get("PORT", 10000))
+    # Host musí být 0.0.0.0, aby byl server dostupný zvenčí
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
