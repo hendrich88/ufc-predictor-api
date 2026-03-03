@@ -1,6 +1,15 @@
 # https://ufc-predictor-api-4hjv.onrender.com/predict_shap?fighter1=Kayla%20Harrison&fighter2=Amanda%20Nunes
 # https://ufc-predictor-api-4hjv.onrender.com/predict-event
 
+import os
+import requests
+import pandas as pd
+import numpy as np
+import json
+from datetime import date
+from joblib import load
+import shap
+
 # ======================
 # AUTO LOAD INPUT.PY
 # ======================
@@ -211,6 +220,7 @@ if __name__ == "__main__":
     with open("event_predictions.json", "w", encoding="utf-8") as f:
         json.dump(final_json, f, ensure_ascii=False, indent=2)
     print("Hotovo. Predikce uloženy do event_predictions.json")
+
 
 
 
