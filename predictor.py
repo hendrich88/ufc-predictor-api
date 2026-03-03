@@ -30,10 +30,10 @@ import json
 # KONFIG
 # ======================
 
-JSON_FILE = "df_prep_clean_2026-01-08.json"
-AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/v1.0/rf_model5.joblib"
+JSON_FILE = "df_prep_clean_2026-03-02.json"
+AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_mode_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/v1.0/rf_model5.joblib"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_calib3.joblib"
 MODEL_FILE = "rf_calib3.joblib"
 
 # ======================
@@ -329,6 +329,7 @@ def predict_event_with_shap_all():
 def save_event_to_json(data, filename="event_predictions.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 
 
