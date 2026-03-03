@@ -235,42 +235,86 @@ def save_event_to_json(results):
 # ======================
 def predict_event_with_shap_all():
     results = {
-        "event_date": event_date, "event": event,
-        "event_accuracy": event_accuracy, "event_roi": event_roi,
+        "event_date": event_date, 
+        "event": event,
+        "event_accuracy": event_accuracy, 
+        "event_roi": event_roi,
+        "event_fights": 0,  # Bude aktualizováno podle počtu validních zápasů
         "fights": []
     }
+    
+    valid_fights_count = 0
+
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
             r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
             r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-            if r1_rows.empty or r2_rows.empty: continue
+            
+            if r1_rows.empty or r2_rows.empty:
+                print(f"Přeskakuji {f1} vs {f2}: Chybějící data v JSONu.")
+                continue
             
             row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
-            f1_fights, f2_fights = int(row1['fighter_fight_number']+1), int(row2['fighter_fight_number']+1)
+            f1_fights = int(row1['fighter_fight_number'] + 1)
+            f2_fights = int(row2['fighter_fight_number'] + 1)
+            
+            # Symetrický výpočet pravděpodobností
             in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
             in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
-            p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
+            
+            p1 = model.predict_proba(in1)[0]
+            p2 = model.predict_proba(in2)[0]
+            
             avg_p1 = (p1[1] + (1 - p2[1])) / 2
             avg_p2 = (p1[0] + (1 - p2[0])) / 2
-            winner, win_prob = (f1, avg_p1) if avg_p1 > avg_p2 else (f2, avg_p2)
             
+            # Určení vítěze/poraženého podle modelu
+            if avg_p1 > avg_p2:
+                winner, win_prob = f1, avg_p1
+                loser, lose_prob = f2, (1 - avg_p1)
+                winner_odds_raw = odds_fighters1[idx]
+                loser_odds_raw = odds_fighters2[idx]
+                shap_input = in1
+            else:
+                winner, win_prob = f2, avg_p2
+                loser, lose_prob = f1, (1 - avg_p2)
+                winner_odds_raw = odds_fighters2[idx]
+                loser_odds_raw = odds_fighters1[idx]
+                shap_input = in2
+
+            # Filtry (limit pravděpodobnosti a minimální počet zápasů)
             if (win_prob * 100) < limit_pred: continue
             if winner == f1 and (f1_fights < min_winner_fights or f2_fights < min_loser_fights): continue
             if winner == f2 and (f2_fights < min_winner_fights or f1_fights < min_loser_fights): continue
 
-            odds = odds_fighters1[idx] if winner == f1 else odds_fighters2[idx]
-            edge = (win_prob - (1/odds)) / (1/odds) * 100
+            # VÝPOČET ODDS PRO ROI (převod 1/kurz na procenta)
+            win_odds_pct = f"{round((1 / winner_odds_raw) * 100, 1)}%"
+            lose_odds_pct = f"{round((1 / loser_odds_raw) * 100, 1)}%"
+            
+            # Výpočet Edge (výhoda modelu oproti sázkovce)
+            edge_val = (win_prob - (1 / winner_odds_raw)) / (1 / winner_odds_raw) * 100
+
             results["fights"].append({
-                "winner": winner, "loser": f2 if winner == f1 else f1,
+                "winner": winner,
                 "win_prob": f"{round(win_prob * 100, 1)}%",
-                "fair_odds": round(1/win_prob, 2),
-                "edge": f"{round(edge, 1)}%",
-                "shap_groups": extract_shap_impact(in1 if winner == f1 else in2),
+                "win_odds": win_odds_pct,   # Klíč pro ROI výpočet
+                "loser": loser,
+                "lose_prob": f"{round(lose_prob * 100, 1)}%",
+                "lose_odds": lose_odds_pct, # Klíč pro ROI výpočet
+                "fair_odds": round(1 / win_prob, 2),
+                "edge": f"{round(edge_val, 1)}%",
+                "shap_groups": extract_shap_impact(shap_input),
                 "hit": default_hit[idx]
             })
+            
+            valid_fights_count += 1
+
         except Exception as e:
             print(f"Chyba u {f1} vs {f2}: {e}")
+
+    results["event_fights"] = valid_fights_count
     return results
+
 
 
 
