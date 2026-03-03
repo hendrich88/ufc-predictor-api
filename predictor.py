@@ -3,27 +3,40 @@ import requests
 import pandas as pd
 import numpy as np
 import json
+import importlib  # Nutné pro aktualizaci input.py za běhu
 from datetime import date
 from joblib import load
 import shap
 
 # ======================
-# AUTO LOAD INPUT.PY
+# AUTO LOAD & RELOAD INPUT.PY
 # ======================
 INPUT_URL = "https://raw.githubusercontent.com/hendrich88/data-ufc-predictor/main/input.py"
 INPUT_FILE = "input.py"
 
-if not os.path.exists(INPUT_FILE):
-    r = requests.get(INPUT_URL, timeout=30)
-    r.raise_for_status()
-    with open(INPUT_FILE, "w", encoding="utf-8") as f:
-        f.write(r.text)
+def refresh_input_file():
+    """Stáhne nejnovější verzi input.py a vynutí reload modulu."""
+    try:
+        # Použití nocache parametru, aby GitHub neposílal starou verzi
+        r = requests.get(f"{INPUT_URL}?nocache={np.random.random()}", timeout=30)
+        r.raise_for_status()
+        with open(INPUT_FILE, "w", encoding="utf-8") as f:
+            f.write(r.text)
+        
+        # Pokud už byl modul načten, provedeme reload
+        if 'input' in globals() or 'input' in os.sys.modules:
+            importlib.reload(input_mod)
+        return True
+    except Exception as e:
+        print(f"Chyba při stahování input.py: {e}")
+        return False
 
-from input import (
-    event_fighters1, event_fighters2, odds_fighters1, odds_fighters2,
-    hit as default_hit, event_date, event, event_accuracy, event_roi,
-    limit_pred, min_winner_fights, min_loser_fights
-)
+# Prvotní stažení/načtení
+if not os.path.exists(INPUT_FILE):
+    refresh_input_file()
+
+# Importujeme jako objekt, abychom mohli přistupovat k čerstvým datům přes tečku
+import input as input_mod
 
 # ======================
 # KONFIGURACE CEST
@@ -44,7 +57,6 @@ def download_file(url, filename):
                 f.write(chunk)
         print(f"{filename} stažen.")
 
-# Spustíme stahování hned při importu
 download_file(MODEL_URL, MODEL_FILE)
 download_file(AGE_MODEL_URL, AGE_MODEL_FILE)
 
@@ -128,26 +140,25 @@ def make_input_df(diffs):
 # SHAP ANALÝZA
 # ======================
 groups = {
-        'Age Index (AI)': ["diff_age_index"],
-        'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate"],
-        'Damage Resistance (AI)': ["diff_win_rate","diff_avg_balance_damage"],
-        'Reach': ["diff_ratio_reach"],
-        'Ranking (AI)': ["diff_elo_before"],
-        'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
-        'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
-        'Kickboxing Attack': ["diff_smt_acc_att_sig_strikes_body_lnd","diff_smt_acc_att_sig_strikes_dist_lnd","diff_ratio_def_sig_strikes_lnd_get","diff_ratio_att_sig_strikes_body_lnd"],
-        'Kickboxing Defense': ["diff_avg_cplx_sig_strikes_body_thr_get"],
-        'Wrestling Attack': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd"],
-        'Wrestling Defense': ["diff_avg_cplx_min_td_thr_get","diff_avg_cntrl_get"],
-        'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
-        'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
-        'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
-        'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
-    }
+    'Age Index (AI)': ["diff_age_index"],
+    'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate"],
+    'Damage Resistance (AI)': ["diff_win_rate","diff_avg_balance_damage"],
+    'Reach': ["diff_ratio_reach"],
+    'Ranking (AI)': ["diff_elo_before"],
+    'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
+    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
+    'Kickboxing Attack': ["diff_smt_acc_att_sig_strikes_body_lnd","diff_smt_acc_att_sig_strikes_dist_lnd","diff_ratio_def_sig_strikes_lnd_get","diff_ratio_att_sig_strikes_body_lnd"],
+    'Kickboxing Defense': ["diff_avg_cplx_sig_strikes_body_thr_get"],
+    'Wrestling Attack': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd"],
+    'Wrestling Defense': ["diff_avg_cplx_min_td_thr_get","diff_avg_cntrl_get"],
+    'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
+    'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
+    'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
+    'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
+}
 
 def extract_shap_impact(input_df):
     sv = explainer.shap_values(input_df)
-    # Výběr správné dimenze pro CalibratedClassifierCV
     if isinstance(sv, list): 
         s = sv[1][0]
     else: 
@@ -155,167 +166,90 @@ def extract_shap_impact(input_df):
     
     group_res = {}
     for g_name, g_feats in groups.items():
-        # Součet SHAP hodnot pro danou skupinu
         val = sum([s[model_required_features.index(f)] for f in g_feats if f in model_required_features])
         group_res[g_name] = round(val * 100, 2)
     
-    # SEŘAZENÍ: Převedeme na list tuplů a seřadíme podle absolutní hodnoty (x[1]) sestupně
-    sorted_impacts = sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True)
-    
-    # Převedeme zpět na slovník (Python 3.7+ zachovává pořadí vložení)
-    return dict(sorted_impacts)
-
-# ======================
-# PŘIDANÉ FUNKCE PRO API
-# ======================
-
-def predict_fight(f1, f2):
-    """Základní predikce bez SHAPu."""
-    r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-    r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-    if r1.empty or r2.empty:
-        raise ValueError(f"Bojovník {(f1 if r1.empty else f2)} nebyl nalezen.")
-    
-    diffs = build_diff(r1.iloc[0], r2.iloc[0], f1, f2, df_stats)
-    input_df = make_input_df(diffs)
-    prob = model.predict_proba(input_df)[0][1]
-    
-    return {
-        "fighter1": f1, "fighter2": f2,
-        "probability": f"{round(prob * 100, 1)}%",
-        "winner_prediction": f1 if prob > 0.5 else f2
-    }
-
-def predict_fight_with_shap(f1, f2):
-    """Predikce s analýzou dopadu parametrů (SHAP) a symetrickým výpočtem."""
-    r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-    r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-    
-    if r1_rows.empty or r2_rows.empty:
-        raise ValueError(f"Bojovník {(f1 if r1_rows.empty else f2)} nebyl nalezen.")
-    
-    row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
-    
-    # Symetrický výpočet (stejně jako v predict_event)
-    in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
-    in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
-    
-    p1 = model.predict_proba(in1)[0]
-    p2 = model.predict_proba(in2)[0]
-    
-    # Průměrování pravděpodobností pro F1
-    avg_p1 = (p1[1] + (1 - p2[1])) / 2
-    avg_p2 = (p1[0] + (1 - p2[0])) / 2
-    
-    if avg_p1 > avg_p2:
-        winner, win_prob = f1, avg_p1
-        # SHAP počítáme pro vítěze
-        shap_input = in1
-    else:
-        winner, win_prob = f2, avg_p2
-        # SHAP počítáme pro vítěze
-        shap_input = in2
-
-    shap_impacts = extract_shap_impact(shap_input)
-    
-    return {
-        "fighter1": f1,
-        "fighter2": f2,
-        "probability": f"{round(win_prob * 100, 1)}%",
-        "winner_prediction": winner,
-        "shap_analysis": shap_impacts
-    }
-
-def save_event_to_json(results):
-    with open("last_event_results.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+    return dict(sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True))
 
 # ======================
 # HLAVNÍ PREDIKCE EVENTU
 # ======================
 def predict_event_with_shap_all():
+    # Vynutíme čerstvá data z input.py před každým výpočtem eventu
+    refresh_input_file()
+    importlib.reload(input_mod)
+
     results = {
-        "event_date": event_date, 
-        "event": event,
-        "event_accuracy": event_accuracy, 
-        "event_roi": event_roi,
-        "event_fights": 0,  # Bude aktualizováno podle počtu validních zápasů
+        "event_date": input_mod.event_date, 
+        "event": input_mod.event,
+        "event_accuracy": input_mod.event_accuracy, 
+        "event_roi": input_mod.event_roi,
+        "event_fights": 0,
         "fights": []
     }
     
     valid_fights_count = 0
+    # Iterujeme přes data přímo z reloadnutého modulu
+    f1_list = input_mod.event_fighters1
+    f2_list = input_mod.event_fighters2
+    o1_list = input_mod.odds_fighters1
+    o2_list = input_mod.odds_fighters2
+    hits = input_mod.hit
 
-    for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
+    for idx, (f1, f2) in enumerate(zip(f1_list, f2_list)):
         try:
             r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
             r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
             
             if r1_rows.empty or r2_rows.empty:
-                print(f"Přeskakuji {f1} vs {f2}: Chybějící data v JSONu.")
                 continue
             
             row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
-            f1_fights = int(row1['fighter_fight_number'] + 1)
-            f2_fights = int(row2['fighter_fight_number'] + 1)
+            f1_fights, f2_fights = int(row1['fighter_fight_number'] + 1), int(row2['fighter_fight_number'] + 1)
             
-            # Symetrický výpočet pravděpodobností
+            # Symetrie
             in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
             in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
-            
-            p1 = model.predict_proba(in1)[0]
-            p2 = model.predict_proba(in2)[0]
+            p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
             
             avg_p1 = (p1[1] + (1 - p2[1])) / 2
             avg_p2 = (p1[0] + (1 - p2[0])) / 2
             
-            # Určení vítěze/poraženého podle modelu
+            # Určení vítěze/poraženého
             if avg_p1 > avg_p2:
-                winner, win_prob = f1, avg_p1
-                loser, lose_prob = f2, (1 - avg_p1)
-                winner_odds_raw = odds_fighters1[idx]
-                loser_odds_raw = odds_fighters2[idx]
+                winner, win_prob, loser, lose_prob = f1, avg_p1, f2, (1 - avg_p1)
+                w_odds_raw, l_odds_raw = o1_list[idx], o2_list[idx]
                 shap_input = in1
             else:
-                winner, win_prob = f2, avg_p2
-                loser, lose_prob = f1, (1 - avg_p2)
-                winner_odds_raw = odds_fighters2[idx]
-                loser_odds_raw = odds_fighters1[idx]
+                winner, win_prob, loser, lose_prob = f2, avg_p2, f1, (1 - avg_p2)
+                w_odds_raw, l_odds_raw = o2_list[idx], o1_list[idx]
                 shap_input = in2
 
-            # Filtry (limit pravděpodobnosti a minimální počet zápasů)
-            if (win_prob * 100) < limit_pred: continue
-            if winner == f1 and (f1_fights < min_winner_fights or f2_fights < min_loser_fights): continue
-            if winner == f2 and (f2_fights < min_winner_fights or f1_fights < min_loser_fights): continue
+            # Filtry z input.py
+            if (win_prob * 100) < input_mod.limit_pred: continue
+            if winner == f1 and (f1_fights < input_mod.min_winner_fights or f2_fights < input_mod.min_loser_fights): continue
+            if winner == f2 and (f2_fights < input_mod.min_winner_fights or f1_fights < input_mod.min_loser_fights): continue
 
-            # VÝPOČET ODDS PRO ROI (převod 1/kurz na procenta)
-            win_odds_pct = f"{round((1 / winner_odds_raw) * 100, 1)}%"
-            lose_odds_pct = f"{round((1 / loser_odds_raw) * 100, 1)}%"
-            
-            # Výpočet Edge (výhoda modelu oproti sázkovce)
-            edge_val = (win_prob - (1 / winner_odds_raw)) / (1 / winner_odds_raw) * 100
+            # Výpočet ROI klíčů
+            win_odds_pct = f"{round((1 / w_odds_raw) * 100, 1)}%"
+            lose_odds_pct = f"{round((1 / l_odds_raw) * 100, 1)}%"
+            edge_val = (win_prob - (1 / w_odds_raw)) / (1 / w_odds_raw) * 100
 
             results["fights"].append({
                 "winner": winner,
                 "win_prob": f"{round(win_prob * 100, 1)}%",
-                "win_odds": win_odds_pct,   # Klíč pro ROI výpočet
+                "win_odds": win_odds_pct,
                 "loser": loser,
                 "lose_prob": f"{round(lose_prob * 100, 1)}%",
-                "lose_odds": lose_odds_pct, # Klíč pro ROI výpočet
+                "lose_odds": lose_odds_pct,
                 "fair_odds": round(1 / win_prob, 2),
                 "edge": f"{round(edge_val, 1)}%",
                 "shap_groups": extract_shap_impact(shap_input),
-                "hit": default_hit[idx]
+                "hit": hits[idx]
             })
-            
             valid_fights_count += 1
-
-        except Exception as e:
-            print(f"Chyba u {f1} vs {f2}: {e}")
+        except:
+            continue
 
     results["event_fights"] = valid_fights_count
     return results
-
-
-
-
-
