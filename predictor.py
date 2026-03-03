@@ -4,12 +4,8 @@
 # ======================
 # AUTO LOAD INPUT.PY
 # ======================
-
 INPUT_URL = "https://raw.githubusercontent.com/hendrich88/data-ufc-predictor/main/input.py"
 INPUT_FILE = "input.py"
-
-import os
-import requests
 
 if not os.path.exists(INPUT_FILE):
     r = requests.get(INPUT_URL, timeout=30)
@@ -17,47 +13,37 @@ if not os.path.exists(INPUT_FILE):
     with open(INPUT_FILE, "w", encoding="utf-8") as f:
         f.write(r.text)
 
-import os
-import requests
-import pandas as pd
-from datetime import date
-from joblib import load
-import shap
-import numpy as np
-import json
+from input import (
+    event_fighters1, event_fighters2, odds_fighters1, odds_fighters2,
+    hit as default_hit, event_date, event, event_accuracy, event_roi,
+    limit_pred, min_winner_fights, min_loser_fights
+)
 
 # ======================
-# KONFIG
+# KONFIGURACE CEST
 # ======================
-
 JSON_FILE = "df_prep_clean_2026-03-02.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_model_age.joblib"
-AGE_MODEL_FILE = "rf_mode_age.joblib"
+AGE_MODEL_FILE = "rf_model_age.joblib"
 MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/download/untagged-9e707d1be9ab4fd9a2fd/rf_calib3.joblib"
 MODEL_FILE = "rf_calib3.joblib"
 
-# ======================
-# STAHOVÁNÍ MODELU
-# ======================
-
 def download_file(url, filename):
-    if os.path.exists(filename):
-        return
-    print(f"Stahuji {filename}...")
-    r = requests.get(url, stream=True, timeout=300)
-    r.raise_for_status()
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
+    if not os.path.exists(filename):
+        print(f"Stahuji {filename}...")
+        r = requests.get(url, stream=True, timeout=300)
+        r.raise_for_status()
+        with open(filename, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-    print(f"{filename} stažen.")
+        print(f"{filename} stažen.")
 
 download_file(MODEL_URL, MODEL_FILE)
+download_file(AGE_MODEL_URL, AGE_MODEL_FILE)
 
 # ======================
-# LOAD DATA + MODEL
+# NAČTENÍ DAT A MODELŮ
 # ======================
-
 if not os.path.exists(JSON_FILE):
     raise FileNotFoundError(f"Missing data file: {JSON_FILE}")
 
@@ -66,269 +52,166 @@ df_stats["date"] = pd.to_datetime(df_stats["date"])
 df_stats = df_stats.sort_values(by="date")
 
 model = load(MODEL_FILE)
-explainer = shap.TreeExplainer(model)
+model_age = load(AGE_MODEL_FILE)
+model_required_features = list(model.feature_names_in_)
+
+# SHAP explainer (používáme .estimator, protože model je CalibratedClassifierCV)
+explainer = shap.TreeExplainer(model.estimator)
 
 # ======================
-# PARAMETRY DECAY
+# POMOCNÉ FUNKCE (DECAY & AGE INDEX)
 # ======================
-
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
-MIN_VALUE = 0  # spodní hranice pro všechny statistiky
+MIN_VALUE = 0
 
 def apply_decay(value, inactive_days):
     if inactive_days <= DECAY_THRESHOLD:
         return value
     t = (inactive_days - DECAY_THRESHOLD) / 365
-    factor = 1 - DECAY_RATE * (t ** 2)
-    factor = max(0.7, factor)
+    factor = max(0.7, 1 - DECAY_RATE * (t ** 2))
     return max(MIN_VALUE, value * factor)
 
-# ======================
-# FEATURES
-# ======================
-
-selected_features = [
-    "diff_age", "diff_elo_before", "diff_ratio_min_sig_strikes_head_lnd_diff", "diff_win_rate",
-    "diff_smt_min_sub_att", "diff_ratio_min_sig_strikes_lnd_diff", "diff_smt_sig_strikes_lnd_diff",
-    "diff_lose_rate", "diff_ratio_min_sub_att_get", "diff_avg_cplx_kd", "diff_avg_cplx_min_td_thr",
-    "diff_ratio_sub_att_diff", "diff_avg_cplx_acc_def_sig_strikes_head_lnd_get", "diff_avg_cplx_sub_att",
-    "diff_ratio_sig_strikes_head_lnd_diff", "diff_avg_cplx_sig_strikes_grnd_lnd_get",
-    "diff_smt_acc_def_sig_strikes_head_lnd_get", "diff_avg_cplx_kd_get", "diff_ratio_min_kd_diff",
-    "diff_avg_cplx_min_sig_strikes_head_lnd_get", "diff_avg_cplx_min_td_lnd", "diff_avg_cplx_sig_strikes_head_lnd",
-    "diff_avg_cplx_min_sig_strikes_leg_lnd_get", "diff_avg_cplx_td_thr", "diff_smt_acc_att_strikes_lnd",
-    "diff_ratio_lose_ko", "diff_avg_cplx_cntrl_get", "diff_ratio_sig_strikes_grnd_thr_diff",
-    "diff_ratio_att_td_lnd", "diff_avg_cplx_acc_def_strikes_lnd_get", "diff_avg_cplx_min_sig_strikes_grnd_thr_get",
-    "diff_smt_min_sig_strikes_head_lnd_diff", "diff_ratio_td_thr", "diff_smt_acc_att_td_lnd",
-    "diff_avg_cplx_sig_strikes_grnd_thr", "diff_smt_acc_att_sig_strikes_grnd_lnd", "diff_smt_sub_att_diff",
-    "diff_smt_acc_def_sig_strikes_grnd_lnd_get", "diff_ratio_reach", "diff_avg_cplx_acc_def_sig_strikes_leg_lnd_get"
-]
-
-stats = [f.replace("diff_", "", 1) for f in selected_features if f not in ["diff_age", "diff_elo_before"]]
-date_fight_pd = pd.to_datetime(date.today())
+def calculate_age_index(fighter, df_stats):
+    try:
+        f_row = df_stats[df_stats['fighter1'] == fighter].sort_values('date').tail(1)
+        if f_row.empty: return 0.5
+        
+        last_date = pd.to_datetime(f_row['date'].iloc[0])
+        years_passed = (pd.to_datetime(date.today()) - last_date).days / 365.25
+        
+        input_data = pd.DataFrame([{
+            'weight_kg': float(f_row['weight_kg'].iloc[0]),
+            'ufc_age': float(f_row['ufc_age'].iloc[0]) + years_passed,
+            'adj_age': (float(f_row['age'].iloc[0]) + years_passed) - float(f_row['glob_avg_age'].iloc[0]),
+            'fighter_fight_number': int(f_row['fighter_fight_number'].iloc[0]) + 1
+        }])
+        # Musí odpovídat pořadí sloupců v Age Modelu
+        cols = ['weight_kg', 'ufc_age', 'adj_age', 'fighter_fight_number']
+        return model_age.predict_proba(input_data[cols])[0][1]
+    except:
+        return 0.5
 
 # ======================
-# SHAP GROUPS
+# TVORBA VSTUPŮ (DIFFS)
 # ======================
-
-groups = {
-        'Age Index (AI)': ["diff_age_index"],
-        'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate"],
-        'Damage Resistance (AI)': ["diff_win_rate","diff_avg_balance_damage"],
-        'Reach': ["diff_ratio_reach"],
-        'Win/Lose Rates': ["diff_win_rate","diff_lose_rate"],
-        'Ranking (AI)': ["diff_elo_before"],
-        'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
-        'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
-        'Kickboxing Attack': ["diff_smt_acc_att_sig_strikes_body_lnd","diff_smt_acc_att_sig_strikes_dist_lnd","diff_ratio_def_sig_strikes_lnd_get","diff_ratio_att_sig_strikes_body_lnd"],
-        'Kickboxing Defense': ["diff_avg_cplx_sig_strikes_body_thr_get"],
-        'Wrestling Attack': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd"],
-        'Wrestling Defense': ["diff_avg_cplx_min_td_thr_get","diff_avg_cntrl_get"],
-        'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
-        'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
-        'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
-        'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
-    }
-
-# ======================
-# INPUT + BUILD
-# ======================
+stats_to_decay = [f.replace("diff_", "", 1) for f in model_required_features 
+                  if f not in ["diff_age_index", "diff_elo_before", "diff_ratio_reach", "diff_avg_self_damage", "diff_avg_balance_damage"]]
 
 def get_stats_from_row(row, inactive_days):
     data = {}
-    data['age'] = -(row['age'] + inactive_days / 365.25)
-    for stat in stats:
-        val = row.get(stat, 0)
-        data[stat] = apply_decay(val, inactive_days)
+    for stat in stats_to_decay:
+        data[stat] = apply_decay(row.get(stat, 0), inactive_days)
     data['elo_before'] = apply_decay(row['elo_before1'], inactive_days)
+    if 'ratio_reach' in row: data['ratio_reach'] = row['ratio_reach']
     return data
 
-def build_diff(row1, row2):
-    inactive1 = (date_fight_pd - pd.to_datetime(row1['date'])).days
-    inactive2 = (date_fight_pd - pd.to_datetime(row2['date'])).days
+def build_diff(row1, row2, f1_name, f2_name, df_stats):
+    inactive1 = (pd.to_datetime(date.today()) - pd.to_datetime(row1['date'])).days
+    inactive2 = (pd.to_datetime(date.today()) - pd.to_datetime(row2['date'])).days
+
     s1 = get_stats_from_row(row1, inactive1)
     s2 = get_stats_from_row(row2, inactive2)
+    
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
-    diffs['diff_age'] = s1['age'] - s2['age']
-    diffs['diff_elo_before'] = s1['elo_before'] - s2['elo_before']
+    
+    # Speciální featury s vlastním decayem/logikou
+    diffs['diff_age_index'] = calculate_age_index(f1_name, df_stats) - calculate_age_index(f2_name, df_stats)
+    diffs['diff_avg_self_damage'] = apply_decay(row1.get('avg_self_damage', 0), inactive1) - \
+                                   apply_decay(row2.get('avg_self_damage', 0), inactive2)
+    diffs['diff_avg_balance_damage'] = apply_decay(row1.get('avg_balance_damage', 0), inactive1) - \
+                                      apply_decay(row2.get('avg_balance_damage', 0), inactive2)
     return diffs
 
-def build_input_df(fighter1, fighter2):
-    row1_df = df_stats.loc[df_stats['fighter1'] == fighter1]
-    if row1_df.empty:
-        raise ValueError(f"Fighter not found: {fighter1}")
-    row1 = row1_df.iloc[0]
-
-    row2_df = df_stats.loc[df_stats['fighter1'] == fighter2]
-    if row2_df.empty:
-        raise ValueError(f"Fighter not found: {fighter2}")
-    row2 = row2_df.iloc[0]
-
-    diffs = build_diff(row1, row2)
-    return pd.DataFrame([{c: diffs.get(c, 0) for c in selected_features}])
+def make_input_df(diffs):
+    data = {c: diffs.get(c, 0) for c in model_required_features}
+    return pd.DataFrame([data])[model_required_features]
 
 # ======================
-# PREDIKCE S MODELEM
+# SHAP ANALÝZA (OPRAVENO)
 # ======================
+groups = {
+    'Age Index (AI)': ["diff_age_index"],
+    'Win/Lose Rates': ["diff_avg_self_damage","diff_lose_rate", "diff_win_rate"],
+    'Damage Resistance (AI)': ["diff_avg_balance_damage"],
+    'Reach': ["diff_ratio_reach"],
+    'Ranking (AI)': ["diff_elo_before"],
+    'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
+    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
+    'Wrestling': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd", "diff_avg_cplx_min_td_thr_get"],
+    'Grappling': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_avg_cplx_sub_att"]
+}
 
-def predict_fight(fighter1: str, fighter2: str) -> dict:
-    input_1 = build_input_df(fighter1, fighter2)
-    input_2 = build_input_df(fighter2, fighter1)
-
-    prob1 = model.predict_proba(input_1)[0]
-    prob2 = model.predict_proba(input_2)[0]
-
-    avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
-    avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
-
-    if avg_prob_f1 > avg_prob_f2:
-        winner, loser, win_prob = fighter1, fighter2, avg_prob_f1
-    else:
-        winner, loser, win_prob = fighter2, fighter1, avg_prob_f2
-
-    return {
-        "winner": winner,
-        "win_prob": f"{round(win_prob * 100, 1)}%",
-        "loser": loser,
-        "lose_prob": f"{round((1 - win_prob) * 100, 1)}%"
-    }
-
-# ======================
-# PREDIKCE S SHAP
-# ======================
-
-def predict_fight_with_shap(f1: str, f2: str) -> dict:
-    input_1 = build_input_df(f1, f2)
-    input_2 = build_input_df(f2, f1)
-
-    prob1 = model.predict_proba(input_1)[0]
-    prob2 = model.predict_proba(input_2)[0]
-
-    avg_prob_f1 = (prob1[1] + (1 - prob2[1])) / 2
-    avg_prob_f2 = (prob1[0] + (1 - prob2[0])) / 2
-
-    if avg_prob_f1 >= avg_prob_f2:
-        winner, loser = f1, f2
-        win_prob = avg_prob_f1
-        win_input, lose_input = input_1, input_2
-    else:
-        winner, loser = f2, f1
-        win_prob = avg_prob_f2
-        win_input, lose_input = input_2, input_1
-
-    # SHAP values
-    def extract_class1_shap(x):
-        sv = explainer.shap_values(x)
-        if isinstance(sv, list):
-            sv = sv[1]
-        sv = np.asarray(sv)
-        if sv.ndim == 3:
-            sv = sv[:, :, 1]
-        if sv.ndim != 2:
-            raise ValueError(f"Unexpected SHAP shape: {sv.shape}")
-        return sv[0]
-
-    shap_win = extract_class1_shap(win_input)
-    shap_lose = extract_class1_shap(lose_input)
-
-    shap_win_df = pd.DataFrame([shap_win], columns=selected_features)
-    shap_lose_df = pd.DataFrame([shap_lose], columns=selected_features)
-
-    shap_groups = {}
-    for group_name, features in groups.items():
-        w = shap_win_df[features].sum(axis=1).iloc[0]
-        l = shap_lose_df[features].sum(axis=1).iloc[0]
-        shap_groups[group_name] = (w - l) / 2
-
-    if sum(shap_groups.values()) < 0:
-        shap_groups = {k: -v for k, v in shap_groups.items()}
-
-    shap_groups = {k: round(v * 100, 2) for k, v in shap_groups.items()}
-    shap_groups = dict(sorted(shap_groups.items(), key=lambda x: abs(x[1]), reverse=True))
-
-    return {
-        "winner": winner,
-        "win_prob": f"{round(win_prob * 100, 1)}%",
-        "loser": loser,
-        "lose_prob": f"{round((1 - win_prob) * 100, 1)}%",
-        "shap_groups": shap_groups
-    }
+def extract_shap_impact(input_df):
+    sv = explainer.shap_values(input_df)
+    # CalibratedClassifierCV -> sv[1] je třída "Výhra"
+    if isinstance(sv, list): s = sv[1][0]
+    else: s = sv[0, :, 1] if sv.ndim == 3 else sv[0]
+    
+    group_res = {}
+    for g_name, g_feats in groups.items():
+        val = sum([s[model_required_features.index(f)] for f in g_feats if f in model_required_features])
+        group_res[g_name] = round(val * 100, 2)
+    return group_res
 
 # ======================
-# PREDIKCE CELÉHO EVENTU
+# HLAVNÍ PREDIKCE EVENTU
 # ======================
-
-from input import (
-    event_fighters1,
-    event_fighters2,
-    odds_fighters1,
-    odds_fighters2,
-    hit as default_hit,
-    event_date,
-    event,
-    event_accuracy,
-    event_roi,
-    limit_pred
-)
-
 def predict_event_with_shap_all():
-    if len(event_fighters1) != len(event_fighters2):
-        raise ValueError("event_fighters1 a event_fighters2 nemají stejnou délku")
-
     results = {
-        "event_date": event_date,
-        "event": event,
-        "event_accuracy": event_accuracy,
-        "event_roi": event_roi,
-        "event_fights": 0,
+        "event_date": event_date, "event": event,
+        "event_accuracy": event_accuracy, "event_roi": event_roi,
         "fights": []
     }
 
     for idx, (f1, f2) in enumerate(zip(event_fighters1, event_fighters2)):
         try:
-            res = predict_fight_with_shap(f1, f2)
+            r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
+            r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
+            
+            if r1_rows.empty or r2_rows.empty: continue
+            
+            row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
+            f1_fights, f2_fights = int(row1['fighter_fight_number']+1), int(row2['fighter_fight_number']+1)
 
-            win_prob_pct = float(res["win_prob"].replace("%", ""))
-            if win_prob_pct <= limit_pred:
-                continue
+            # Symetrická predikce
+            in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
+            in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
+            
+            p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
+            avg_p1 = (p1[1] + (1 - p2[1])) / 2
+            avg_p2 = (p1[0] + (1 - p2[0])) / 2
 
-            winner = res["winner"]
+            winner, win_prob = (f1, avg_p1) if avg_p1 > avg_p2 else (f2, avg_p2)
+            
+            # FILTRY
+            if (win_prob * 100) < limit_pred: continue
+            if winner == f1 and (f1_fights < min_winner_fights or f2_fights < min_loser_fights): continue
+            if winner == f2 and (f2_fights < min_winner_fights or f1_fights < min_loser_fights): continue
 
-            # určení správného kurzu pro vítěze
-            if winner == f1:
-                win_odds_value = odds_fighters1[idx]
-                lose_odds_value = odds_fighters2[idx]
-            else:
-                win_odds_value = odds_fighters2[idx]
-                lose_odds_value = odds_fighters1[idx]
+            # Sázková logika
+            odds = odds_fighters1[idx] if winner == f1 else odds_fighters2[idx]
+            edge = (win_prob - (1/odds)) / (1/odds) * 100
 
-            # win_prob jako číslo 0–1
-            win_prob_decimal = win_prob_pct / 100
+            results["fights"].append({
+                "winner": winner, "loser": f2 if winner == f1 else f1,
+                "win_prob": f"{round(win_prob * 100, 1)}%",
+                "fair_odds": round(1/win_prob, 2),
+                "edge": f"{round(edge, 1)}%",
+                "shap_groups": extract_shap_impact(in1 if winner == f1 else in2),
+                "hit": default_hit[idx]
+            })
+        except Exception as e:
+            print(f"Chyba u {f1} vs {f2}: {e}")
 
-            # implied probability z kurzu
-            implied_prob = 1 / win_odds_value
-
-            # edge v %
-            edge = (win_prob_decimal - implied_prob) / implied_prob * 100
-
-            # uložíme do res JSON, edge nad win_prob
-            res["edge"] = f"{round(edge, 2)}%"
-            res["win_prob"] = f"{round(win_prob_pct, 1)}%"
-            res["win_odds"] = f"{round((1 / win_odds_value) * 100, 1)}%"
-            res["lose_odds"] = f"{round((1 / lose_odds_value) * 100, 1)}%"
-            res["hit"] = default_hit[idx]
-
-            results["fights"].append(res)
-
-        except Exception:
-            continue  # chyby ignorujeme
-
-    results["event_fights"] = len(results["fights"])
     return results
 
-def save_event_to_json(data, filename="event_predictions.json"):
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+if __name__ == "__main__":
+    final_json = predict_event_with_shap_all()
+    with open("event_predictions.json", "w", encoding="utf-8") as f:
+        json.dump(final_json, f, ensure_ascii=False, indent=2)
+    print("Hotovo. Predikce uloženy do event_predictions.json")
+
 
 
 
