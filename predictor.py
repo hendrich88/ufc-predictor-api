@@ -17,14 +17,12 @@ INPUT_FILE = "input.py"
 def refresh_input_file():
     """Stáhne nejnovější verzi input.py a vynutí reload modulu."""
     try:
-        # Použití nocache parametru, aby GitHub neposílal starou verzi
         r = requests.get(f"{INPUT_URL}?nocache={np.random.random()}", timeout=30)
         r.raise_for_status()
         with open(INPUT_FILE, "w", encoding="utf-8") as f:
             f.write(r.text)
         
-        # Pokud už byl modul načten, provedeme reload
-        if 'input' in globals() or 'input' in os.sys.modules:
+        if 'input_mod' in globals():
             importlib.reload(input_mod)
         return True
     except Exception as e:
@@ -35,7 +33,6 @@ def refresh_input_file():
 if not os.path.exists(INPUT_FILE):
     refresh_input_file()
 
-# Importujeme jako objekt, abychom mohli přistupovat k čerstvým datům přes tečku
 import input as input_mod
 
 # ======================
@@ -73,8 +70,6 @@ df_stats = df_stats.sort_values(by="date")
 model = load(MODEL_FILE)
 model_age = load(AGE_MODEL_FILE)
 model_required_features = list(model.feature_names_in_)
-
-# SHAP explainer
 explainer = shap.TreeExplainer(model.estimator)
 
 # ======================
@@ -175,7 +170,6 @@ def extract_shap_impact(input_df):
 # HLAVNÍ PREDIKCE EVENTU
 # ======================
 def predict_event_with_shap_all():
-    # Vynutíme čerstvá data z input.py před každým výpočtem eventu
     refresh_input_file()
     importlib.reload(input_mod)
 
@@ -189,7 +183,6 @@ def predict_event_with_shap_all():
     }
     
     valid_fights_count = 0
-    # Iterujeme přes data přímo z reloadnutého modulu
     f1_list = input_mod.event_fighters1
     f2_list = input_mod.event_fighters2
     o1_list = input_mod.odds_fighters1
@@ -207,7 +200,6 @@ def predict_event_with_shap_all():
             row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
             f1_fights, f2_fights = int(row1['fighter_fight_number'] + 1), int(row2['fighter_fight_number'] + 1)
             
-            # Symetrie
             in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
             in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
             p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
@@ -215,7 +207,6 @@ def predict_event_with_shap_all():
             avg_p1 = (p1[1] + (1 - p2[1])) / 2
             avg_p2 = (p1[0] + (1 - p2[0])) / 2
             
-            # Určení vítěze/poraženého
             if avg_p1 > avg_p2:
                 winner, win_prob, loser, lose_prob = f1, avg_p1, f2, (1 - avg_p1)
                 w_odds_raw, l_odds_raw = o1_list[idx], o2_list[idx]
@@ -225,31 +216,42 @@ def predict_event_with_shap_all():
                 w_odds_raw, l_odds_raw = o2_list[idx], o1_list[idx]
                 shap_input = in2
 
-            # Filtry z input.py
-            if (win_prob * 100) < input_mod.limit_pred: continue
-            if winner == f1 and (f1_fights < input_mod.min_winner_fights or f2_fights < input_mod.min_loser_fights): continue
-            if winner == f2 and (f2_fights < input_mod.min_winner_fights or f1_fights < input_mod.min_loser_fights): continue
-
-            # Výpočet ROI klíčů
-            win_odds_pct = f"{round((1 / w_odds_raw) * 100, 1)}%"
-            lose_odds_pct = f"{round((1 / l_odds_raw) * 100, 1)}%"
+            # Výpočet Edge
             edge_val = (win_prob - (1 / w_odds_raw)) / (1 / w_odds_raw) * 100
+
+            # --- FILTRY ---
+            if (win_prob * 100) < input_mod.limit_pred: continue
+            if edge_val < input_mod.edge: continue
+            
+            # Kontrola počtu zápasů
+            if winner == f1:
+                if f1_fights < input_mod.min_winner_fights or f2_fights < input_mod.min_loser_fights: continue
+            else:
+                if f2_fights < input_mod.min_winner_fights or f1_fights < input_mod.min_loser_fights: continue
 
             results["fights"].append({
                 "winner": winner,
                 "win_prob": f"{round(win_prob * 100, 1)}%",
-                "win_odds": win_odds_pct,
+                "win_odds": f"{round((1 / w_odds_raw) * 100, 1)}%",
                 "loser": loser,
                 "lose_prob": f"{round(lose_prob * 100, 1)}%",
-                "lose_odds": lose_odds_pct,
+                "lose_odds": f"{round((1 / l_odds_raw) * 100, 1)}%",
                 "fair_odds": round(1 / win_prob, 2),
                 "edge": f"{round(edge_val, 1)}%",
                 "shap_groups": extract_shap_impact(shap_input),
                 "hit": hits[idx]
             })
             valid_fights_count += 1
-        except:
+        except Exception as e:
+            print(f"Chyba u zápasu {f1} vs {f2}: {e}")
             continue
 
     results["event_fights"] = valid_fights_count
     return results
+
+# ======================
+# SPUŠTĚNÍ
+# ======================
+if __name__ == "__main__":
+    final_output = predict_event_with_shap_all()
+    print(json.dumps(final_output, indent=4, ensure_ascii=False))
