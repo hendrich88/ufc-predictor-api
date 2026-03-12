@@ -174,6 +174,9 @@ def predict_event_with_shap_all():
     importlib.reload(input_mod)
 
     results = {
+        "year_list": [2026],  # Příklad statických dat, lze dopisovat dynamicky
+        "total_accuracy": 0,  # Bude doplněno v post-processingu nebo externě
+        "total_roi": 0,
         "event_date": input_mod.event_date, 
         "event": input_mod.event,
         "event_accuracy": input_mod.event_accuracy, 
@@ -216,7 +219,7 @@ def predict_event_with_shap_all():
                 w_odds_raw, l_odds_raw = o2_list[idx], o1_list[idx]
                 shap_input = in2
 
-            # Výpočet Edge
+            # Výpočet Edge (win_prob / implicit_prob)
             edge_val = (win_prob - (1 / w_odds_raw)) / (1 / w_odds_raw) * 100
 
             # --- FILTRY ---
@@ -229,18 +232,22 @@ def predict_event_with_shap_all():
             else:
                 if f2_fights < input_mod.min_winner_fights or f1_fights < input_mod.min_loser_fights: continue
 
-            results["fights"].append({
+            # Sestavení fight objektu v požadovaném pořadí
+            fight_res = {
                 "winner": winner,
                 "win_prob": f"{round(win_prob * 100, 1)}%",
                 "win_odds": f"{round((1 / w_odds_raw) * 100, 1)}%",
+                "fair_odds": round(1 / win_prob, 2),
+                "win_odds_bet": round(float(w_odds_raw), 2),
                 "loser": loser,
                 "lose_prob": f"{round(lose_prob * 100, 1)}%",
                 "lose_odds": f"{round((1 / l_odds_raw) * 100, 1)}%",
-                "fair_odds": round(1 / win_prob, 2),
                 "edge": f"{round(edge_val, 1)}%",
                 "shap_groups": extract_shap_impact(shap_input),
                 "hit": hits[idx]
-            })
+            }
+
+            results["fights"].append(fight_res)
             valid_fights_count += 1
         except Exception as e:
             print(f"Chyba u zápasu {f1} vs {f2}: {e}")
