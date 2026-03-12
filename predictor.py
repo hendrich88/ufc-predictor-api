@@ -235,6 +235,7 @@ def predict_event_with_shap_all():
             # Sestavení fight objektu v požadovaném pořadí
             fight_res = {
                 "winner": winner,
+                "edge": f"{round(edge_val, 1)}%",
                 "win_prob": f"{round(win_prob * 100, 1)}%",
                 "win_odds": f"{round((1 / w_odds_raw) * 100, 1)}%",
                 "fair_odds": round(1 / win_prob, 2),
@@ -242,7 +243,6 @@ def predict_event_with_shap_all():
                 "loser": loser,
                 "lose_prob": f"{round(lose_prob * 100, 1)}%",
                 "lose_odds": f"{round((1 / l_odds_raw) * 100, 1)}%",
-                "edge": f"{round(edge_val, 1)}%",
                 "shap_groups": extract_shap_impact(shap_input),
                 "hit": hits[idx]
             }
@@ -262,3 +262,4 @@ def predict_event_with_shap_all():
 if __name__ == "__main__":
     final_output = predict_event_with_shap_all()
     print(json.dumps(final_output, indent=4, ensure_ascii=False))
+
