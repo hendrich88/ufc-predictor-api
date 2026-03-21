@@ -10,20 +10,18 @@ app = FastAPI(title="UFC Predictor API")
 def root():
     return {"message": "API je online. Modely se stahují na pozadí nebo při prvním volání."}
 
+# Endpoint pro predikci celého eventu podle input.py
 @app.get("/predict-event")
 def predict_event(save_json: bool = False):
     try:
-        # Importy a vynucení reloadu pro aktuální data z GitHubu
         import predictor
         import input as input_mod
         
         importlib.reload(input_mod)
         importlib.reload(predictor)
 
-        # Spuštění kompletní predikce eventu
         results = predictor.predict_event_with_shap_all()
         
-        # Volitelné uložení (pokud máš v predictor.py funkci save_event_to_json)
         if save_json and hasattr(predictor, 'save_event_to_json'):
             predictor.save_event_to_json(results)
             
@@ -32,8 +30,9 @@ def predict_event(save_json: bool = False):
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Chyba při predikci eventu: {str(e)}")
 
-@app.get("/predict_shap")
-def get_single_predict(
+# NOVÝ ENDPOINT pro individuální zápas přes URL
+@app.get("/predict_fight_with_shap")
+def api_predict_single(
     fighter1: str, 
     fighter2: str, 
     odds1: float = Query(2.0, description="Kurz na fightera 1"), 
@@ -43,12 +42,11 @@ def get_single_predict(
         import predictor
         importlib.reload(predictor)
         
-        # Voláme funkci predict_shap, kterou jsme přidali do predictor.py
-        # Pokud jsi ji v predictor.py pojmenoval predict_fight_with_shap, 
-        # změň název níže na: predictor.predict_fight_with_shap(...)
-        result = predictor.predict_shap(fighter1, fighter2, odds1, odds2)
+        # Voláme funkci, kterou jsi přidal do predictor.py
+        # Ujisti se, že se v predictor.py jmenuje přesně: predict_fight_with_shap
+        result = predictor.predict_fight_with_shap(fighter1, fighter2, odds1, odds2)
         
-        if "error" in result:
+        if isinstance(result, dict) and "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
             
         return result
