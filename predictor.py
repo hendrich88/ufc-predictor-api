@@ -38,7 +38,7 @@ import input as input_mod
 # ======================
 # KONFIGURACE CEST
 # ======================
-JSON_FILE = "df_prep_clean_2026-03-02.json"
+JSON_FILE = "df_prep_clean_2026-03-09.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
 MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib3.joblib"
