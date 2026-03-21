@@ -167,6 +167,66 @@ def extract_shap_impact(input_df):
     return dict(sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True))
 
 # ======================
+# PREDIKCE ZÁPASU
+# ======================
+def predict_shap(f1, f2, o1=2.0, o2=2.0):
+    """
+    Predikce pro jeden konkrétní zápas na základě jmen.
+    o1, o2 jsou volitelné kurzy (default 2.0, pokud nejsou zadány).
+    """
+    try:
+        # 1. Načtení řádků z DB (stejná logika jako v event verzi)
+        r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
+        r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
+
+        if r1_rows.empty or r2_rows.empty:
+            return {"error": f"Fighter not found in database: {f1 if r1_rows.empty else f2}"}
+
+        row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
+        
+        # 2. Výpočet vstupů pro model
+        in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
+        in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
+        
+        p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
+
+        # Průměrování obou stran (A vs B a B vs A)
+        avg_p1 = (p1[1] + (1 - p2[1])) / 2
+        avg_p2 = (p1[0] + (1 - p2[0])) / 2
+
+        # 3. Určení vítěze a SHAP analýzy
+        if avg_p1 > avg_p2:
+            winner, win_prob, loser, lose_prob = f1, avg_p1, f2, (1 - avg_p1)
+            w_odds_raw, l_odds_raw = float(o1), float(o2)
+            shap_input = in1
+        else:
+            winner, win_prob, loser, lose_prob = f2, avg_p2, f1, (1 - avg_p2)
+            w_odds_raw, l_odds_raw = float(o2), float(o1)
+            shap_input = in2
+
+        # Výpočet Edge
+        edge_val = (win_prob - (1 / w_odds_raw)) / (1 / w_odds_raw) * 100
+
+        # 4. Sestavení identického výstupu
+        fight_res = {
+            "winner": winner,
+            "edge": f"{round(edge_val, 1)}%",
+            "win_prob": f"{round(win_prob * 100, 1)}%",
+            "win_odds": f"{round((1 / w_odds_raw) * 100, 1)}%",
+            "fair_odds": round(1 / win_prob, 2),
+            "win_odds_bet": round(w_odds_raw, 2),
+            "loser": loser,
+            "lose_prob": f"{round(lose_prob * 100, 1)}%",
+            "lose_odds": f"{round((1 / l_odds_raw) * 100, 1)}%",
+            "shap_groups": extract_shap_impact(shap_input)
+        }
+
+        return fight_res
+
+    except Exception as e:
+        return {"error": str(e)}
+        
+# ======================
 # HLAVNÍ PREDIKCE EVENTU
 # ======================
 def predict_event_with_shap_all():
