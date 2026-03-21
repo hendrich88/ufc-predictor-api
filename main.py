@@ -1,6 +1,7 @@
 import os
 import importlib
-from fastapi import FastAPI, HTTPException
+import traceback
+from fastapi import FastAPI, HTTPException, Query
 import uvicorn
 
 app = FastAPI(title="UFC Predictor API")
@@ -12,35 +13,48 @@ def root():
 @app.get("/predict-event")
 def predict_event(save_json: bool = False):
     try:
-        # 1. Importujeme moduly uvnitř
+        # Importy a vynucení reloadu pro aktuální data z GitHubu
         import predictor
-        import input
+        import input as input_mod
         
-        # 2. KLÍČOVÝ KROK: Vynutíme reload modulu input, 
-        # aby se projevily změny v souboru, který jsi přepsal na disku
-        importlib.reload(input)
-        importlib.reload(predictor) # Reloadujeme i predictor, pokud si bere data z inputu při importu
+        importlib.reload(input_mod)
+        importlib.reload(predictor)
 
-        # 3. Spustíme predikci
+        # Spuštění kompletní predikce eventu
         results = predictor.predict_event_with_shap_all()
         
-        if save_json:
+        # Volitelné uložení (pokud máš v predictor.py funkci save_event_to_json)
+        if save_json and hasattr(predictor, 'save_event_to_json'):
             predictor.save_event_to_json(results)
             
         return results
     except Exception as e:
-        # Detailnější výpis chyby pro debugování na Renderu
-        import traceback
         print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Chyba při predikci: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chyba při predikci eventu: {str(e)}")
 
 @app.get("/predict_shap")
-def predict_shap(fighter1: str, fighter2: str):
+def get_single_predict(
+    fighter1: str, 
+    fighter2: str, 
+    odds1: float = Query(2.0, description="Kurz na fightera 1"), 
+    odds2: float = Query(2.0, description="Kurz na fightera 2")
+):
     try:
-        from predictor import predict_fight_with_shap
-        return predict_fight_with_shap(fighter1, fighter2)
+        import predictor
+        importlib.reload(predictor)
+        
+        # Voláme funkci predict_shap, kterou jsme přidali do predictor.py
+        # Pokud jsi ji v predictor.py pojmenoval predict_fight_with_shap, 
+        # změň název níže na: predictor.predict_fight_with_shap(...)
+        result = predictor.predict_shap(fighter1, fighter2, odds1, odds2)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+            
+        return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Chyba při individuální predikci: {str(e)}")
 
 if __name__ == "__main__":
     # Render port bind
