@@ -73,28 +73,18 @@ model_required_features = list(model.feature_names_in_)
 explainer = shap.TreeExplainer(model.estimator)
 
 # ======================
-# POMOCNÉ FUNKCE (OPRAVENÝ DECAY)
+# POMOCNÉ FUNKCE (DECAY & AGE)
 # ======================
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
 MIN_VALUE = 0
 
 def apply_decay(value, inactive_days, is_negative=False):
-    """
-    is_negative=False: hodnota klesá (oslabení ofenzivy/assetů).
-    is_negative=True: hodnota roste (zhoršení obrany/odolnosti - Tony Ferguson efekt).
-    """
     if inactive_days <= DECAY_THRESHOLD:
         return value
     t = (inactive_days - DECAY_THRESHOLD) / 365
     factor = max(0.7, 1 - DECAY_RATE * (t ** 2))
-    
-    if is_negative:
-        # Hodnota se zvýší (např. o 30 % při factoru 0.7)
-        return value * (2 - factor)
-    else:
-        # Hodnota klesá k nule
-        return max(MIN_VALUE, value * factor)
+    return value * (2 - factor) if is_negative else max(MIN_VALUE, value * factor)
 
 def calculate_age_index(fighter, df_stats):
     try:
@@ -108,55 +98,33 @@ def calculate_age_index(fighter, df_stats):
             'adj_age': (float(f_row['age'].iloc[0]) + years_passed) - float(f_row['glob_avg_age'].iloc[0]),
             'fighter_fight_number': int(f_row['fighter_fight_number'].iloc[0]) + 1
         }])
-        cols = ['weight_kg', 'ufc_age', 'adj_age', 'fighter_fight_number']
-        return model_age.predict_proba(input_data[cols])[0][1]
+        return model_age.predict_proba(input_data[['weight_kg', 'ufc_age', 'adj_age', 'fighter_fight_number']])[0][1]
     except:
         return 0.5
 
-# Seznam statistik pro decay (vylučujeme věk, reach a ty, které řešíme explicitně)
 stats_to_decay = [f.replace("diff_", "", 1) for f in model_required_features 
                   if f not in ["diff_age_index", "diff_elo_before", "diff_ratio_reach"]]
 
 def get_stats_from_row(row, inactive_days):
-    """Zpracuje statistiky z jednoho řádku s ohledem na neaktivitu."""
     data = {}
-    
-    # 1. Rozdělení na negativní (zhoršující se) a pozitivní (oslabující se) metriky
     damage_stats = ["avg_self_damage", "avg_balance_damage"]
-    
     for stat in stats_to_decay:
         val = row.get(stat, 0)
-        # Detekce směru: _get a damage metriky pauzou ROSTOU (zhoršují se)
         is_neg = stat.endswith('_get') or stat in damage_stats
         data[stat] = apply_decay(val, inactive_days, is_negative=is_neg)
-    
-    # 2. ELO (vždy klesá jako ofenzivní asset)
     data['elo_before'] = apply_decay(row.get('elo_before1', 0), inactive_days, is_negative=False)
-    
-    # 3. Reach (beze změny)
-    if 'ratio_reach' in row: 
-        data['ratio_reach'] = row['ratio_reach']
-    
+    if 'ratio_reach' in row: data['ratio_reach'] = row['ratio_reach']
     return data
 
 def build_diff(row1, row2, f1_name, f2_name, df_stats):
-    """Vytvoří diff dataframe pro model."""
     inactive1 = (pd.to_datetime(date.today()) - pd.to_datetime(row1['date'])).days
     inactive2 = (pd.to_datetime(date.today()) - pd.to_datetime(row2['date'])).days
-    
-    s1 = get_stats_from_row(row1, inactive1)
-    s2 = get_stats_from_row(row2, inactive2)
-    
-    # Automatický výpočet rozdílů pro všechny decayed statistiky
+    s1, s2 = get_stats_from_row(row1, inactive1), get_stats_from_row(row2, inactive2)
     diffs = {f"diff_{k}": s1[k] - s2[k] for k in s1}
-    
-    # Speciální indexy (Age Index)
     diffs['diff_age_index'] = calculate_age_index(f1_name, df_stats) - calculate_age_index(f2_name, df_stats)
-    
     return diffs
 
 def make_input_df(diffs):
-    """Zajistí správné pořadí sloupců pro Random Forest."""
     data = {c: diffs.get(c, 0) for c in model_required_features}
     return pd.DataFrame([data])[model_required_features]
 
@@ -183,55 +151,10 @@ groups = {
 
 def extract_shap_impact(input_df):
     sv = explainer.shap_values(input_df)
-    if isinstance(sv, list): 
-        s = sv[1][0]
-    else: 
-        s = sv[0, :, 1] if sv.ndim == 3 else sv[0]
-    
-    group_res = {}
-    for g_name, g_feats in groups.items():
-        val = sum([s[model_required_features.index(f)] for f in g_feats if f in model_required_features])
-        group_res[g_name] = round(val * 100, 2)
-    
+    s = sv[1][0] if isinstance(sv, list) else (sv[0, :, 1] if sv.ndim == 3 else sv[0])
+    group_res = {g_name: round(sum([s[model_required_features.index(f)] for f in g_feats if f in model_required_features]) * 100, 2) 
+                 for g_name, g_feats in groups.items()}
     return dict(sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True))
-
-# ======================
-# PREDIKCE ZÁPASU (API)
-# ======================
-def predict_fight_with_shap(f1, f2, o1=2.0, o2=2.0):
-    try:
-        r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-        r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-
-        if r1.empty or r2.empty:
-            return {"error": f"Bojovník nebyl nalezen: {f1 if r1.empty else f2}"}
-
-        row1, row2 = r1.iloc[0], r2.iloc[0]
-        in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
-        in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
-        
-        p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
-        avg_p1 = (p1[1] + (1 - p2[1])) / 2
-        avg_p2 = (p1[0] + (1 - p2[0])) / 2
-
-        if avg_p1 > avg_p2:
-            winner, win_prob, loser, lose_prob = f1, avg_p1, f2, avg_p2
-            w_odds, l_odds = o1, o2
-            shap_input = in1
-        else:
-            winner, win_prob, loser, lose_prob = f2, avg_p2, f1, avg_p1
-            w_odds, l_odds = o2, o1
-            shap_input = in2
-
-        edge_val = (win_prob - (1 / w_odds)) / (1 / w_odds) * 100
-
-        return {
-            "winner": winner, "edge": f"{round(edge_val, 1)}%", "win_prob": f"{round(win_prob * 100, 1)}%",
-            "fair_odds": round(1 / win_prob, 2), "win_odds_bet": round(w_odds, 2), "loser": loser,
-            "lose_prob": f"{round(lose_prob * 100, 1)}%", "shap_groups": extract_shap_impact(shap_input)
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 # ======================
 # HLAVNÍ PREDIKCE EVENTU
@@ -248,34 +171,42 @@ def predict_event_with_shap_all():
     
     for idx, (f1, f2) in enumerate(zip(input_mod.event_fighters1, input_mod.event_fighters2)):
         try:
-            r1_rows = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-            r2_rows = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
+            r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
+            r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
+            if r1.empty or r2.empty: continue
             
-            if r1_rows.empty or r2_rows.empty: continue
-            
-            row1, row2 = r1_rows.iloc[0], r2_rows.iloc[0]
-            in1 = make_input_df(build_diff(row1, row2, f1, f2, df_stats))
-            in2 = make_input_df(build_diff(row2, row1, f2, f1, df_stats))
+            in1 = make_input_df(build_diff(r1.iloc[0], r2.iloc[0], f1, f2, df_stats))
+            in2 = make_input_df(build_diff(r2.iloc[0], r1.iloc[0], f2, f1, df_stats))
             
             p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
-            avg_p1 = (p1[1] + (1 - p2[1])) / 2
-            avg_p2 = (p1[0] + (1 - p2[0])) / 2
+            avg_p1, avg_p2 = (p1[1] + (1 - p2[1])) / 2, (p1[0] + (1 - p2[0])) / 2
             
+            # Určení vítěze/poraženého a kurzů
             if avg_p1 > avg_p2:
-                winner, win_prob, loser, lose_prob, w_odds_raw, l_odds_raw, shap_input = f1, avg_p1, f2, (1-avg_p1), input_mod.odds_fighters1[idx], input_mod.odds_fighters2[idx], in1
+                winner, win_p, loser, lose_p = f1, avg_p1, f2, avg_p2
+                w_odds_raw, l_odds_raw, shap_in = input_mod.odds_fighters1[idx], input_mod.odds_fighters2[idx], in1
             else:
-                winner, win_prob, loser, lose_prob, w_odds_raw, l_odds_raw, shap_input = f2, avg_p2, f1, (1-avg_p2), input_mod.odds_fighters2[idx], input_mod.odds_fighters1[idx], in2
+                winner, win_p, loser, lose_p = f2, avg_p2, f1, avg_p1
+                w_odds_raw, l_odds_raw, shap_in = input_mod.odds_fighters2[idx], input_mod.odds_fighters1[idx], in2
 
-            edge_val = (win_prob - (1 / w_odds_raw)) / (1 / w_odds_raw) * 100
+            # Výpočty pro JSON
+            win_odds_pct = (1 / float(w_odds_raw)) * 100
+            lose_odds_pct = (1 / float(l_odds_raw)) * 100
+            edge_val = (win_p - (1 / float(w_odds_raw))) / (1 / float(w_odds_raw)) * 100
 
-            # FILTRY
-            if (win_prob * 100) < input_mod.limit_pred or edge_val < input_mod.edge: continue
+            if (win_p * 100) < input_mod.limit_pred or edge_val < input_mod.edge: continue
             
             results["fights"].append({
-                "winner": winner, "edge": f"{round(edge_val, 1)}%", "win_prob": f"{round(win_prob * 100, 1)}%",
-                "fair_odds": round(1 / win_prob, 2), "win_odds_bet": round(float(w_odds_raw), 2),
-                "loser": loser, "lose_prob": f"{round(lose_prob * 100, 1)}%",
-                "shap_groups": extract_shap_impact(shap_input), "hit": input_mod.hit[idx]
+                "winner": winner,
+                "win_prob": f"{round(win_p * 100, 1)}%",
+                "win_odds": f"{round(win_odds_pct, 1)}%",
+                "loser": loser,
+                "lose_prob": f"{round(lose_p * 100, 1)}%",
+                "lose_odds": f"{round(lose_odds_pct, 1)}%",
+                "fair_odds": round(1 / win_p, 2),
+                "edge": f"{round(edge_val, 1)}%",
+                "shap_groups": extract_shap_impact(shap_in),
+                "hit": input_mod.hit[idx]
             })
         except: continue
 
