@@ -157,6 +157,49 @@ def extract_shap_impact(input_df):
     return dict(sorted(group_res.items(), key=lambda x: abs(x[1]), reverse=True))
 
 # ======================
+# PREDIKCE ZÁPASU (API)
+# ======================
+def predict_fight_with_shap(f1, f2, o1=2.0, o2=2.0):
+    try:
+        r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
+        r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
+
+        if r1.empty or r2.empty:
+            return {"error": f"Bojovník nebyl nalezen: {f1 if r1.empty else f2}"}
+
+        in1 = make_input_df(build_diff(r1.iloc[0], r2.iloc[0], f1, f2, df_stats))
+        in2 = make_input_df(build_diff(r2.iloc[0], r1.iloc[0], f2, f1, df_stats))
+        
+        p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
+        avg_p1, avg_p2 = (p1[1] + (1 - p2[1])) / 2, (p1[0] + (1 - p2[0])) / 2
+
+        if avg_p1 > avg_p2:
+            winner, win_p, loser, lose_p = f1, avg_p1, f2, avg_p2
+            w_odds, l_odds, shap_in = o1, o2, in1
+        else:
+            winner, win_p, loser, lose_p = f2, avg_p2, f1, avg_p1
+            w_odds, l_odds, shap_in = o2, o1, in2
+
+        win_odds_pct = (1 / float(w_odds)) * 100
+        lose_odds_pct = (1 / float(l_odds)) * 100
+        edge_val = (win_p - (1 / float(w_odds))) / (1 / float(w_odds)) * 100
+
+        return {
+            "winner": winner,
+            "win_prob": f"{round(win_p * 100, 1)}%",
+            "win_odds": f"{round(win_odds_pct, 1)}%",
+            "loser": loser,
+            "lose_prob": f"{round(lose_p * 100, 1)}%",
+            "lose_odds": f"{round(lose_odds_pct, 1)}%",
+            "fair_odds": round(1 / win_p, 2),
+            "edge": f"{round(edge_val, 1)}%",
+            "shap_groups": extract_shap_impact(shap_in),
+            "hit": None # Hit u individuální predikce neznáme
+        }
+    except Exception as e:
+        return {"error": f"Interní chyba: {str(e)}"}
+
+# ======================
 # HLAVNÍ PREDIKCE EVENTU
 # ======================
 def predict_event_with_shap_all():
@@ -171,43 +214,21 @@ def predict_event_with_shap_all():
     
     for idx, (f1, f2) in enumerate(zip(input_mod.event_fighters1, input_mod.event_fighters2)):
         try:
-            r1 = df_stats[df_stats['fighter1'] == f1].sort_values('date').tail(1)
-            r2 = df_stats[df_stats['fighter1'] == f2].sort_values('date').tail(1)
-            if r1.empty or r2.empty: continue
+            # Volání individuální predikce bez filtrů (filtry aplikujeme až zde)
+            res = predict_fight_with_shap(f1, f2, input_mod.odds_fighters1[idx], input_mod.odds_fighters2[idx])
             
-            in1 = make_input_df(build_diff(r1.iloc[0], r2.iloc[0], f1, f2, df_stats))
-            in2 = make_input_df(build_diff(r2.iloc[0], r1.iloc[0], f2, f1, df_stats))
-            
-            p1, p2 = model.predict_proba(in1)[0], model.predict_proba(in2)[0]
-            avg_p1, avg_p2 = (p1[1] + (1 - p2[1])) / 2, (p1[0] + (1 - p2[0])) / 2
-            
-            # Určení vítěze/poraženého a kurzů
-            if avg_p1 > avg_p2:
-                winner, win_p, loser, lose_p = f1, avg_p1, f2, avg_p2
-                w_odds_raw, l_odds_raw, shap_in = input_mod.odds_fighters1[idx], input_mod.odds_fighters2[idx], in1
-            else:
-                winner, win_p, loser, lose_p = f2, avg_p2, f1, avg_p1
-                w_odds_raw, l_odds_raw, shap_in = input_mod.odds_fighters2[idx], input_mod.odds_fighters1[idx], in2
+            if "error" in res: continue
 
-            # Výpočty pro JSON
-            win_odds_pct = (1 / float(w_odds_raw)) * 100
-            lose_odds_pct = (1 / float(l_odds_raw)) * 100
-            edge_val = (win_p - (1 / float(w_odds_raw))) / (1 / float(w_odds_raw)) * 100
-
-            if (win_p * 100) < input_mod.limit_pred or edge_val < input_mod.edge: continue
+            # Aplikace filtrů z input_mod
+            win_p_float = float(res["win_prob"].replace("%", ""))
+            edge_float = float(res["edge"].replace("%", ""))
             
-            results["fights"].append({
-                "winner": winner,
-                "win_prob": f"{round(win_p * 100, 1)}%",
-                "win_odds": f"{round(win_odds_pct, 1)}%",
-                "loser": loser,
-                "lose_prob": f"{round(lose_p * 100, 1)}%",
-                "lose_odds": f"{round(lose_odds_pct, 1)}%",
-                "fair_odds": round(1 / win_p, 2),
-                "edge": f"{round(edge_val, 1)}%",
-                "shap_groups": extract_shap_impact(shap_in),
-                "hit": input_mod.hit[idx]
-            })
+            if win_p_float < input_mod.limit_pred or edge_float < input_mod.edge: 
+                continue
+            
+            # Přidání hitu z inputu pro event list
+            res["hit"] = input_mod.hit[idx]
+            results["fights"].append(res)
         except: continue
 
     results["event_fights"] = len(results["fights"])
