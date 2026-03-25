@@ -77,14 +77,30 @@ explainer = shap.TreeExplainer(model.estimator)
 # ======================
 DECAY_THRESHOLD = 180
 DECAY_RATE = 0.05
-MIN_VALUE = 0
 
 def apply_decay(value, inactive_days, is_negative=False):
+    """
+    Upravená logika chřadnutí:
+    - Pozitivní stats: klesají k nule (násobení < 1.0)
+    - Negativní stats (_get): klesají hlouběji do mínusu (násobení > 1.0)
+    - Damage (0-1): roste k jedničce (násobení > 1.0)
+    """
     if inactive_days <= DECAY_THRESHOLD:
         return value
+    
     t = (inactive_days - DECAY_THRESHOLD) / 365
     factor = max(0.7, 1 - DECAY_RATE * (t ** 2))
-    return value * (2 - factor) if is_negative else max(MIN_VALUE, value * factor)
+    
+    if is_negative:
+        multiplier = 2 - factor # Např. 1.1 až 1.3
+        new_val = value * multiplier
+        # Pojistka pro damage 0-1
+        if 0 <= value <= 1:
+            return min(1.0, new_val)
+        return new_val
+    else:
+        # Pozitivní věci klesají k nule
+        return value * factor
 
 def calculate_age_index(fighter, df_stats):
     try:
@@ -110,9 +126,13 @@ def get_stats_from_row(row, inactive_days):
     damage_stats = ["avg_self_damage", "avg_balance_damage"]
     for stat in stats_to_decay:
         val = row.get(stat, 0)
+        # Identifikujeme negativní metriky (_get jsou záporné, damage 0-1)
         is_neg = stat.endswith('_get') or stat in damage_stats
         data[stat] = apply_decay(val, inactive_days, is_negative=is_neg)
+    
+    # ELO je pozitivní metrika -> klesá k nule
     data['elo_before'] = apply_decay(row.get('elo_before1', 0), inactive_days, is_negative=False)
+    
     if 'ratio_reach' in row: data['ratio_reach'] = row['ratio_reach']
     return data
 
@@ -194,7 +214,7 @@ def predict_fight_with_shap(f1, f2, o1=2.0, o2=2.0):
             "fair_odds": round(1 / win_p, 2),
             "edge": f"{round(edge_val, 1)}%",
             "shap_groups": extract_shap_impact(shap_in),
-            "hit": None # Hit u individuální predikce neznáme
+            "hit": None
         }
     except Exception as e:
         return {"error": f"Interní chyba: {str(e)}"}
@@ -214,19 +234,16 @@ def predict_event_with_shap_all():
     
     for idx, (f1, f2) in enumerate(zip(input_mod.event_fighters1, input_mod.event_fighters2)):
         try:
-            # Volání individuální predikce bez filtrů (filtry aplikujeme až zde)
             res = predict_fight_with_shap(f1, f2, input_mod.odds_fighters1[idx], input_mod.odds_fighters2[idx])
             
             if "error" in res: continue
 
-            # Aplikace filtrů z input_mod
             win_p_float = float(res["win_prob"].replace("%", ""))
             edge_float = float(res["edge"].replace("%", ""))
             
             if win_p_float < input_mod.limit_pred or edge_float < input_mod.edge: 
                 continue
             
-            # Přidání hitu z inputu pro event list
             res["hit"] = input_mod.hit[idx]
             results["fights"].append(res)
         except: continue
