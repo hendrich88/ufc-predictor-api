@@ -10,6 +10,11 @@ app = FastAPI(title="UFC Predictor API")
 def root():
     return {"message": "API je online. Modely se stahují na pozadí nebo při prvním volání."}
 
+# ✅ NOVÝ HEALTH ENDPOINT
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 # 1. Původní endpoint pro celý event
 @app.get("/predict-event")
 def predict_event(save_json: bool = False):
@@ -26,8 +31,7 @@ def predict_event(save_json: bool = False):
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Chyba při predikci eventu: {str(e)}")
 
-# 2. OPRAVENÝ ENDPOINT pro tvou URL
-# Název v @app.get musí být PŘESNĚ "predict_fight_with_shap"
+# 2. Endpoint pro fight
 @app.get("/predict_fight_with_shap")
 def predict_fight_with_shap(
     fighter1: str, 
@@ -39,8 +43,6 @@ def predict_fight_with_shap(
         import predictor
         importlib.reload(predictor)
         
-        # Voláme funkci z predictor.py
-        # Ujisti se, že v predictor.py se funkce jmenuje: predict_fight_with_shap
         result = predictor.predict_fight_with_shap(fighter1, fighter2, odds1, odds2)
         
         if isinstance(result, dict) and "error" in result:
