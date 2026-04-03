@@ -38,10 +38,10 @@ import input as input_mod
 # ======================
 # KONFIGURACE CEST
 # ======================
-JSON_FILE = "df_prep_clean_2026-04-03.json"
+JSON_FILE = "df_prep_clean_2026-03-09.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib4.joblib"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib3.joblib"
 MODEL_FILE = "rf_calib4.joblib"
 
 def download_file(url, filename):
@@ -166,8 +166,7 @@ groups = {
     'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
     'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
     'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
-    'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"],
-    'Style Dominance (AI)': ["diff_avg_dom_press"]
+    'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
 }
 
 def extract_shap_impact(input_df):
