@@ -41,8 +41,8 @@ import input as input_mod
 JSON_FILE = "df_prep_clean_2026-03-09.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib3.joblib"
-MODEL_FILE = "rf_calib4.joblib"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib5.joblib"
+MODEL_FILE = "rf_calib5.joblib"
 
 def download_file(url, filename):
     if not os.path.exists(filename):
@@ -152,22 +152,23 @@ def make_input_df(diffs):
 # SHAP ANALÝZA
 # ======================
 groups = {
-    'Age Index (AI)': ["diff_age_index"],
-    'Win/Loss Rates': ["diff_win_rate","diff_lose_rate"],
-    'Damage Resistance (AI)': ["diff_avg_balance_damage","diff_avg_self_damage"],
-    'Reach': ["diff_ratio_reach"],
-    'Ranking (AI)': ["diff_elo_before"],
-    'Boxing Attack': ["diff_smt_sig_strikes_head_lnd_diff","diff_ratio_kd_diff","diff_avg_cplx_min_kd"],
-    'Boxing Defense': ["diff_avg_cplx_acc_def_sig_strikes_head_lnd_get","diff_ratio_def_sig_strikes_head_lnd_get","diff_avg_cplx_kd_get"],
-    'Kickboxing Attack': ["diff_smt_acc_att_sig_strikes_body_lnd","diff_smt_acc_att_sig_strikes_dist_lnd","diff_ratio_att_sig_strikes_body_lnd"],
-    'Kickboxing Defense': ["diff_avg_cplx_sig_strikes_body_thr_get","diff_ratio_def_sig_strikes_lnd_get"],
-    'Wrestling Attack': ["diff_avg_cplx_min_cntrl","diff_avg_cplx_min_td_lnd"],
-    'Wrestling Defense': ["diff_avg_cplx_min_td_thr_get","diff_avg_cntrl_get"],
-    'Grappling Attack': ["diff_smt_rev", "diff_ratio_sub_att_diff","diff_ratio_min_rev_diff","diff_avg_cplx_min_rev","diff_avg_cplx_min_sub_att","diff_avg_cplx_sub_att"],
-    'Complex Dominance (AI)': ["diff_avg_cplx_dom_total","diff_avg_dom_total"],
-    'Striking Dominance (AI)': ["diff_avg_cplx_dom_stance","diff_avg_dom_stance"],
-    'Ground Dominance (AI)': ["diff_avg_cplx_dom_ground","diff_avg_dom_ground"]
-}
+        'Age Index (AI)': ['diff_adj_age','diff_age_index'],
+        'Win Rates': ['diff_smt_rd_win','diff_smt_win_sub','diff_smt_win_ko'],
+        'Reach': ["diff_ratio_reach"],
+        'Ranking (AI)': ['diff_elo_before'],
+        'Boxing Attack': ['diff_smt_min_sig_strikes_head_lnd_diff','diff_avg_cplx_min_kd', 'diff_smt_min_kd_get','diff_smt_min_kd','diff_ratio_kd_diff'],
+        'Boxing Defense': ['diff_avg_cplx_min_sig_strikes_head_lnd_get','diff_avg_cplx_kd_get'],
+        'Kickboxing Attack': ['diff_smt_acc_att_sig_strikes_body_lnd','diff_avg_cplx_min_sig_strikes_body_thr','diff_smt_acc_att_sig_strikes_dist_lnd'],
+        'Kickboxing Defense': ['diff_avg_cplx_min_sig_strikes_clnch_thr_get','diff_avg_cplx_sig_strikes_body_thr_get','diff_ratio_def_sig_strikes_lnd_get'],
+        'Wrestling Attack': ['diff_ratio_td_thr','diff_ratio_att_td_lnd','diff_avg_cplx_min_cntrl', 'diff_avg_cplx_min_td_lnd'],
+        'Wrestling Defense': ['diff_smt_acc_def_sig_strikes_grnd_lnd_get','diff_avg_cplx_cntrl_get','diff_avg_cplx_min_td_thr_get'],
+        'Grappling Attack': ['diff_smt_min_sub_att','diff_avg_cplx_min_sub_att', 'diff_avg_cplx_sub_att','diff_smt_sub_att_diff','diff_avg_cplx_min_rev', 'diff_ratio_min_rev_diff'],
+        'Grappling Defense': ['diff_avg_cplx_min_sub_att_get'],
+        'Complex Dominance (AI)': ['diff_smt_adj_dom_total','diff_avg_1rd_dom_total','diff_avg_cplx_adj_dom_total'],
+        'Striking Dominance (AI)': ['diff_avg_cplx_dom_stance','diff_avg_adj_dom_stance'],
+        'Ground Dominance (AI)': ['diff_avg_cplx_adj_dom_ground','diff_smt_1rd_dom_ground', 'diff_smt_1rd_dom_ground_get']
+
+    }
 
 def extract_shap_impact(input_df):
     sv = explainer.shap_values(input_df)
