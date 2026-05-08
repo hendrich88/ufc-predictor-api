@@ -41,8 +41,8 @@ import input as input_mod
 JSON_FILE = "df_prep_clean_2026-05-06.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib7.joblib"
-MODEL_FILE = "rf_calib7.joblib"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib8.joblib"
+MODEL_FILE = "rf_calib8.joblib"
 
 def download_file(url, filename):
     if not os.path.exists(filename):
@@ -166,7 +166,7 @@ groups = {
         'Grappling Attack': ['diff_avg_cplx_min_sub_att', 'diff_smt_sub_att_diff','diff_avg_cplx_min_rev', 'diff_ratio_min_rev_diff'],
         'Grappling Defense': ['diff_avg_cplx_min_sub_att_get'],
         'Striking Dominance (AI)': ['diff_avg_cplx_adj_dom_stance'],
-        'Ground Dominance (AI)': ['diff_avg_cplx_adj_dom_ground','diff_smt_1rd_dom_ground']
+        'Ground Dominance (AI)': ['diff_avg_cplx_adj_dom_ground'] # 'diff_smt_1rd_dom_ground'
 
     }
 
