@@ -153,7 +153,7 @@ def make_input_df(diffs):
 # ======================
 groups = {
         'Age Index (AI)': ['diff_adj_age','diff_age_index'],
-        'Round Dominance (AI)': ['diff_smt_rd_win'],
+        'Complex Dominance (AI)': ['diff_smt_rd_win'],
         'Finish Rate': ['diff_smt_win_sub','diff_smt_win_ko'],
         'Reach': ["diff_ratio_reach"],
         'Ranking (AI)': ['diff_elo_before'],
