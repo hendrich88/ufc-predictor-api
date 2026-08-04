@@ -38,11 +38,11 @@ import input as input_mod
 # ======================
 # KONFIGURACE CEST
 # ======================
-JSON_FILE = "df_prep_clean_2026-06-03.json"
+JSON_FILE = "df_prep_clean_2026-08-04.json"
 AGE_MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_model_age.joblib"
 AGE_MODEL_FILE = "rf_model_age.joblib"
-MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib8.joblib"
-MODEL_FILE = "rf_calib8.joblib"
+MODEL_URL = "https://github.com/hendrich88/ufc-predictor-api/releases/latest/download/rf_calib9.joblib"
+MODEL_FILE = "rf_calib9.joblib"
 
 def download_file(url, filename):
     if not os.path.exists(filename):
